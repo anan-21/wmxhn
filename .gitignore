@@ -1,0 +1,23 @@
+# 环境变量 - 包含 API Key，绝对不能上传
+.env
+
+# 依赖
+node_modules/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Claude 本地配置
+.claude/
+
+# 外部 skill 项目（独立仓库）
+zhangxuefeng-skill/
+
+# 日志
+*.log
+npm-debug.log*
