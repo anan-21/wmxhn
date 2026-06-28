@@ -35,6 +35,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('chatInput').focus();
   updateStaticAvatars();
   renderHistoryList();
+
+  // 移动端：点击聊天区域关闭侧栏
+  document.querySelector('.chat-main').addEventListener('click', () => {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar.classList.contains('open')) {
+      sidebar.classList.remove('open');
+    }
+  });
 });
 
 function generateId() {
@@ -123,12 +131,24 @@ async function autoGreet() {
   STATE.isProcessing = false;
 }
 
+// ========== 快捷入口 ==========
+
+function selectStarter(text) {
+  const input = document.getElementById('chatInput');
+  input.value = text;
+  sendMessage();
+}
+
 // ========== 主发送逻辑 ==========
 
 async function sendMessage() {
   const input = document.getElementById('chatInput');
   const message = input.value.trim();
   if (!message || STATE.isProcessing) return;
+
+  // 首次发送消息后隐藏快捷入口
+  const starters = document.getElementById('quickStarters');
+  if (starters) starters.style.display = 'none';
 
   input.value = '';
   STATE.isProcessing = true;

@@ -39,6 +39,15 @@ function buildBasePersona() {
 - 绝对化表达："千万别"、"一定要"、"没有之一"
 - 但给对方留面子："这不是你们的问题"、"很多家长都不知道"
 
+## 数据引用规则（V4 新增）
+
+你给出的所有具体数据和建议，必须标注来源：
+- [DB] — 来自系统录取数据库（位次数据、录取分数据）
+- [知识库] — 来自知识库（就业薪资、学校标签、行业趋势、政策规则）
+- [AI分析] — 你的推理和判断（基于前两者数据合成）
+
+没有数据库或知识库支撑的数据，绝对不瞎编。如果某个点只能靠经验推测，明确告诉用户"这是我根据经验推测的，不一定准"。
+
 ## 三种你不做的事
 
 - 不一次性问两个以上的问题。你不是在审问，你是在聊天。
@@ -51,6 +60,9 @@ function buildPhaseGuide(phase, profile) {
 
   if (phase === 'greeting' || phase === 'gathering') {
     return buildGatheringGuide(profileSummary, profile);
+  }
+  if (phase === 'half_analyzing') {
+    return buildHalfAnalyzingGuide(profileSummary, profile);
   }
   if (phase === 'analyzing') {
     return buildAnalyzingGuide(profileSummary);
@@ -156,6 +168,38 @@ ${hasBasics ? `
 - 话题必须是针对这个学生的具体情况才值得聊的，不是通用的知识问答。`;
 }
 
+function buildHalfAnalyzingGuide(profileSummary, profile) {
+  const missingField = !profile.family_income ? '家庭经济条件' : '';
+
+  return `## 当前状态：半分析阶段
+
+${profileSummary}
+
+分数、省份、科类已经有了，但还缺${missingField || '一些关键信息'}。你现在可以给出初步的方向性判断，但还不是完整的分析报告。
+
+## 你的任务
+
+### 先给出初步判断（半分析）
+基于已有的3个核心信息（分数、省份、科类），给出：
+1. 这个分段在${profile.province || '本省'}的大致定位
+2. 2-3个可以重点考虑的方向
+3. 1-2个需要避开的坑
+
+半分析不如完整分析那么详细。不需要专业逐个分析，不需要冲稳保策略。
+
+### 然后自然地追问缺失信息
+在给出初步判断后，自然而然地过渡到追问。比如：
+
+"不过我还差一个关键信息——你家里条件怎么样？普通工薪还是条件不错？这直接决定了我是建议你去冲计算机还是稳电气。"
+
+"这个分段在XX省大概处在XX位置。我先给你几个方向，你听听。不过我还得了解下你的家庭情况，因为这会影响建议。"
+
+### 节奏
+- 半分析保持简洁：3-5句话的方向性判断
+- 不过度展开。完整分析留给正式分析阶段
+- 追问自然嵌入，不是在填表`;
+}
+
 function buildAnalyzingGuide(profileSummary) {
   return `## 当前状态：分析阶段
 
@@ -236,11 +280,20 @@ function buildOutputRules() {
 当你抛出话题时，用 "→" 开头。系统会提取这些行展示给用户作为快捷选择。`;
 }
 
-function buildUserPrompt(profile, engineResult) {
+function buildUserPrompt(profile, engineResult, knowledgeContext) {
+  let base;
   if (!engineResult) {
-    return buildGatheringUserMessage(profile);
+    base = buildGatheringUserMessage(profile);
+  } else {
+    base = buildAnalysisUserMessage(profile, engineResult);
   }
-  return buildAnalysisUserMessage(profile, engineResult);
+
+  // 注入知识库上下文（V4）
+  if (knowledgeContext) {
+    base = `${base}\n\n【知识库参考信息】\n${knowledgeContext}\n\n请结合以上知识库数据进行分析，引用时标注[知识库]。`;
+  }
+
+  return base;
 }
 
 function buildGatheringUserMessage(profile) {

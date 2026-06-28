@@ -757,3 +757,32 @@ body::-webkit-scrollbar-track { background: transparent; }
   .form-grid { grid-template-columns: 1fr; }
   .rec-cards-row { grid-template-columns: 1fr; }
 }
+
+/* ===== Quick Start Chips ===== */
+.quick-starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+.starter-chip {
+  background: var(--bg-chip, #f0f4ff);
+  color: var(--text-chip, #4f46e5);
+  border: 1px solid var(--border-chip, #c7d2fe);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.starter-chip:hover {
+  background: var(--bg-chip-hover, #e0e7ff);
+  border-color: var(--border-chip-hover, #818cf8);
+  transform: translateY(-1px);
+}
+@media (max-width: 768px) {
+  .quick-starters { padding: 0 8px 8px; gap: 6px; }
+  .starter-chip { font-size: 12px; padding: 6px 12px; }
+}

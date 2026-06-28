@@ -2,6 +2,7 @@
 // 学生画像校验 —— 判断画像是否足够运行引擎
 
 const REQUIRED = ['score', 'province', 'subject', 'family_income'];
+const HALF_REQUIRED = ['score', 'province', 'subject'];
 const OPTIONAL = ['rank', 'interest', 'city_preference', 'postgraduate'];
 const ALL = [...REQUIRED, ...OPTIONAL];
 
@@ -15,6 +16,11 @@ const PROVINCE_WHITELIST = [
 function isProfileReady(profile) {
   if (!profile) return false;
   return REQUIRED.every(k => profile[k] != null && profile[k] !== '');
+}
+
+function isProfileHalfReady(profile) {
+  if (!profile) return false;
+  return HALF_REQUIRED.every(k => profile[k] != null && profile[k] !== '');
 }
 
 function getMissingFields(profile) {
@@ -108,8 +114,9 @@ function mapToEngineInput(profile) {
 }
 
 module.exports = {
-  REQUIRED, OPTIONAL, ALL,
+  REQUIRED, HALF_REQUIRED, OPTIONAL, ALL,
   isProfileReady,
+  isProfileHalfReady,
   getMissingFields,
   getCompleteness,
   validateField,

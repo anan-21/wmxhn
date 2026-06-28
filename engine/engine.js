@@ -19,8 +19,18 @@ function runEngine(user) {
   // 2. 应用用户级规则 → 调整全局权重
   weights = applyUserRules(user, weights);
 
-  // 3. 逐专业评分
-  const results = majorsData.majors.map(major => {
+  // 3. 按科类过滤专业（文科生不能报理工科/医学）
+  const availableMajors = majorsData.majors.filter(major => {
+    if (user.subject === 'arts') {
+      // 文科生排除纯理工科和医学类专业
+      if (major.category === '理工科' || major.category === '医学') return false;
+    }
+    // 理科生可以报所有类别（包括文科，文理兼招常见）
+    return true;
+  });
+
+  // 4. 逐专业评分
+  const results = availableMajors.map(major => {
     const baseScore = scoreMajor(major, weights, user);
     const penalty = applyMajorPenalty(major, user);
     const finalScore = Math.round((baseScore + penalty) * 10) / 10;
@@ -39,10 +49,10 @@ function runEngine(user) {
     };
   });
 
-  // 4. 按分数降序排序
+  // 5. 按分数降序排序
   results.sort((a, b) => b.score - a.score);
 
-  // 5. 冲/稳/保/避 分级
+  // 6. 冲/稳/保/避 分级
   const ranked = categorize(results);
 
   return { weights, ranked, full_list: results };

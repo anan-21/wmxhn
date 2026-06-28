@@ -123,6 +123,135 @@
         "risk": 0.8
       },
       "note": "考研可以洗学历、提升起点，但最多考两次，别变相啃老"
+    },
+    {
+      "id": "province_zhejiang",
+      "level": "user",
+      "description": "浙江考生：80个平行志愿，专业+院校模式",
+      "condition": "user.province === '浙江'",
+      "effects": {
+        "risk": 0.3,
+        "stability": 0.5
+      },
+      "note": "浙江80个志愿容错率高，可以多冲一些好学校。但也意味着好专业竞争更透明。"
+    },
+    {
+      "id": "province_shandong",
+      "level": "user",
+      "description": "山东考生：96个平行志愿，填满不亏",
+      "condition": "user.province === '山东'",
+      "effects": {
+        "risk": 0.4,
+        "stability": 0.3
+      },
+      "note": "山东96个志愿，数量多容错空间大，可以大胆冲一些好学校。"
+    },
+    {
+      "id": "province_henan",
+      "level": "user",
+      "description": "河南考生：竞争最激烈，48个志愿按专业组填报",
+      "condition": "user.province === '河南'",
+      "effects": {
+        "risk": -0.8,
+        "stability": 1.2,
+        "salary": 0.5
+      },
+      "note": "河南考生多、录取率低，稳和保最重要，别把希望都押在冲刺上。"
+    },
+    {
+      "id": "province_beijing_shanghai",
+      "level": "user",
+      "description": "北京/上海考生：本地录取优势明显",
+      "condition": "user.province === '北京' || user.province === '上海'",
+      "effects": {
+        "risk": 0.8,
+        "city_opportunity": 1.5,
+        "stability": 0.8
+      },
+      "note": "北京上海本地录取率远高于全国平均，冲本地985/211有天然优势。"
+    },
+    {
+      "id": "major_stomatology_high_interest",
+      "level": "major",
+      "description": "口腔医学——金饭碗专业",
+      "condition": "major.id === 'stomatology'",
+      "effects": {
+        "salary": 1.5,
+        "stability": 1.2,
+        "risk": -0.8
+      },
+      "note": "口腔是医学里性价比最高的方向，收入天花板高、创业容易、不用值夜班。"
+    },
+    {
+      "id": "major_nursing_stable",
+      "level": "major",
+      "description": "护理学——刚需稳定专业",
+      "condition": "major.id === 'nursing'",
+      "effects": {
+        "stability": 1.5,
+        "risk": -1.0,
+        "salary": -0.3
+      },
+      "note": "护理学就业率极高，老龄化社会刚需。但薪资天花板有限，需要能吃苦。"
+    },
+    {
+      "id": "major_ai_rising",
+      "level": "major",
+      "description": "人工智能——风口专业",
+      "condition": "major.id === 'artificial_intelligence'",
+      "effects": {
+        "salary": 2.0,
+        "interest_appeal": 1.0,
+        "risk": -0.5
+      },
+      "note": "AI是当前最大风口，但需要顶尖数学能力和名校背景。"
+    },
+    {
+      "id": "major_civil_decline",
+      "level": "major",
+      "description": "土木工程——行业下行期",
+      "condition": "major.id === 'civil_engineering'",
+      "effects": {
+        "salary": -1.0,
+        "stability": -0.5,
+        "city_opportunity": -1.0
+      },
+      "note": "基建高峰期已过，房地产下行。除非家里有建筑背景，否则慎重。"
+    },
+    {
+      "id": "major_software_high_demand",
+      "level": "major",
+      "description": "软件工程——就业广但需持续学习",
+      "condition": "major.id === 'software_engineering'",
+      "effects": {
+        "salary": 1.2,
+        "city_opportunity": 0.8,
+        "stability": -0.3
+      },
+      "note": "软件工程就业面广但技术迭代快，不能停止学习。"
+    },
+    {
+      "id": "major_chinese_literature_civil",
+      "level": "major",
+      "description": "汉语言文学——考公第一专业",
+      "condition": "major.id === 'chinese_literature'",
+      "effects": {
+        "stability": 1.0,
+        "salary": -0.5,
+        "risk": -0.3
+      },
+      "note": "文科考公最强专业之一，但非考公路径薪资偏低。"
+    },
+    {
+      "id": "low_income_high_risk_major",
+      "level": "major",
+      "description": "低收入家庭选长周期/高风险专业需谨慎",
+      "condition": "user.family_wealth <= 4 && (major.id === 'clinical_medicine' || major.id === 'pharmacy' || major.id === 'artificial_intelligence')",
+      "effects": {
+        "stability": -1.0,
+        "risk": 1.5
+      },
+      "note": "低收入家庭选医学/AI等高投入专业，经济压力大，回报周期长。"
     }
   ]
 }

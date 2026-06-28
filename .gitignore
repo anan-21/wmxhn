@@ -21,3 +21,9 @@ zhangxuefeng-skill/
 # 日志
 *.log
 npm-debug.log*
+.vercel
+
+# Large data files (not needed at runtime)
+data/admission-v3.json
+data/admission_clean.db.gz
+reference/

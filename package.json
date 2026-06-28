@@ -8,13 +8,20 @@
     "dev": "node server.js",
     "test-engine": "node engine/engine.js"
   },
-  "keywords": ["gaokao", "college-application", "career-counseling", "zhangxuefeng"],
+  "keywords": [
+    "gaokao",
+    "college-application",
+    "career-counseling",
+    "zhangxuefeng"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
     "dotenv": "^16.4.0",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "flexsearch": "^0.8.212",
+    "xlsx": "^0.18.5"
   }
 }

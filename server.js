@@ -6,8 +6,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const runEngine = require('./engine/engine');
-const { querySchools, queryAllMajors } = require('./engine/queryAdmission');
-const { rankQuery, rankQueryAllMajors } = require('./engine/rankEngine');
+const { querySchools, queryAllMajors, rankQuery, rankQueryAllMajors } = require('./engine/admissionQuery');
 const { recommend } = require('./engine/recommender');
 const {
   buildSystemPrompt,
@@ -16,10 +15,16 @@ const {
 } = require('./prompt/system-prompt');
 const {
   isProfileReady,
+  isProfileHalfReady,
   getCompleteness,
   mergeProfile,
   mapToEngineInput
 } = require('./engine/profileValidator');
+const { getKnowledgeContext } = require('./knowledge/loader');
+const { getUserData, loadUserData, queryUserData, hasUserDataForProvince } = require('./engine/userDataLoader');
+const { webSearch } = require('./engine/webSearch');
+const { TOOLS, toClaudeTools, executeTool } = require('./engine/tools');
+const { warmup: warmupRAG } = require('./engine/rag/index');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -250,6 +255,168 @@ async function callAI(providerId, apiKey, systemPrompt, messages, maxTokens = 40
   return await callOpenAICompatible(provider, apiKey, systemPrompt, messages, maxTokens);
 }
 
+// ========== Function Calling (V4) ==========
+
+async function callAIWithTools(providerId, apiKey, systemPrompt, messages, maxTokens = 4096) {
+  const provider = resolveProvider(providerId, apiKey);
+  if (!provider) return { text: null, toolCalls: [] };
+
+  const MAX_ROUNDS = 3;
+  let round = 0;
+  const allToolCalls = [];
+
+  while (round < MAX_ROUNDS) {
+    round++;
+    let text, toolCalls;
+
+    if (provider.type === 'anthropic') {
+      const result = await callClaudeWithTools(provider, apiKey, systemPrompt, messages, TOOLS, maxTokens);
+      text = result.text;
+      toolCalls = result.toolCalls;
+    } else {
+      const result = await callOpenAIWithTools(provider, apiKey, systemPrompt, messages, TOOLS, maxTokens);
+      text = result.text;
+      toolCalls = result.toolCalls;
+    }
+
+    // No tool calls → return text
+    if (!toolCalls || toolCalls.length === 0) {
+      return { text, toolCalls: allToolCalls };
+    }
+
+    // Execute tools
+    console.log(`  🔧 LLM调用工具 (round ${round}/${MAX_ROUNDS}):`, toolCalls.map(t => t.name).join(', '));
+
+    // Add assistant message with tool_calls
+    if (provider.type === 'anthropic') {
+      // Claude format
+      const toolUseBlocks = toolCalls.map(tc => ({
+        type: 'tool_use',
+        id: tc.id,
+        name: tc.name,
+        input: tc.args,
+      }));
+      messages.push({ role: 'assistant', content: toolUseBlocks });
+      // Execute and add tool results
+      const toolResults = [];
+      for (const tc of toolCalls) {
+        const result = await executeTool(tc.name, tc.args);
+        allToolCalls.push({ name: tc.name, args: tc.args, result });
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: tc.id,
+          content: JSON.stringify(result).slice(0, 4000),
+        });
+      }
+      messages.push({ role: 'user', content: toolResults });
+    } else {
+      // OpenAI format
+      messages.push({
+        role: 'assistant',
+        content: null,
+        tool_calls: toolCalls.map(tc => ({
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+        })),
+      });
+      for (const tc of toolCalls) {
+        const result = await executeTool(tc.name, tc.args);
+        allToolCalls.push({ name: tc.name, args: tc.args, result });
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(result).slice(0, 4000),
+        });
+      }
+    }
+  }
+
+  // Final call after tool results
+  const finalResult = await callAI(providerId, apiKey, systemPrompt, messages, maxTokens);
+  return { text: finalResult, toolCalls: allToolCalls };
+}
+
+async function callOpenAIWithTools(provider, apiKey, systemPrompt, messages, tools, maxTokens = 4096) {
+  const baseURL = (provider.baseURL || process.env[provider.envBaseURL] || '').replace(/\/+$/, '');
+  const model = process.env[provider.envModel] || provider.defaultModel;
+  const realKey = apiKey || (provider.envKey ? process.env[provider.envKey] : '');
+
+  const payload = {
+    model,
+    messages: [{ role: 'system', content: systemPrompt }, ...messages],
+    max_tokens: maxTokens,
+    temperature: 0.7,
+    tools,
+    tool_choice: 'auto',
+  };
+
+  const response = await fetch(`${baseURL}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${realKey}` },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error?.message || `${provider.name} API ${response.status}`);
+  }
+
+  const data = await response.json();
+  const msg = data.choices[0].message;
+
+  const toolCalls = [];
+  if (msg.tool_calls) {
+    for (const tc of msg.tool_calls) {
+      try {
+        toolCalls.push({
+          id: tc.id,
+          name: tc.function.name,
+          args: JSON.parse(tc.function.arguments),
+        });
+      } catch (e) {
+        console.log('  ⚠️ tool_calls parse error:', e.message);
+      }
+    }
+  }
+
+  return { text: msg.content || '', toolCalls };
+}
+
+async function callClaudeWithTools(provider, apiKey, systemPrompt, messages, tools, maxTokens = 4096) {
+  let Anthropic;
+  try { Anthropic = require('@anthropic-ai/sdk'); } catch (e) { throw new Error('未安装 @anthropic-ai/sdk'); }
+
+  const realKey = apiKey || (provider.envKey ? process.env[provider.envKey] : '');
+  const options = { apiKey: realKey };
+  const baseURL = provider.baseURL || (provider.envBaseURL ? process.env[provider.envBaseURL] : '');
+  if (baseURL) options.baseURL = baseURL;
+
+  const client = new Anthropic(options);
+  const model = process.env.CLAUDE_MODEL || provider.defaultModel;
+
+  const response = await client.messages.create({
+    model,
+    max_tokens: maxTokens,
+    temperature: 0.7,
+    system: systemPrompt,
+    messages,
+    tools: toClaudeTools(tools),
+  });
+
+  const textBlocks = response.content.filter(b => b.type === 'text');
+  const toolBlocks = response.content.filter(b => b.type === 'tool_use');
+
+  const text = textBlocks.map(b => b.text).join('\n');
+  const toolCalls = toolBlocks.map(b => ({
+    id: b.id,
+    name: b.name,
+    args: b.input || {},
+  }));
+
+  return { text, toolCalls };
+}
+
 // ========== 会话管理 ==========
 
 const sessions = new Map();
@@ -391,7 +558,8 @@ async function handleV2Chat(req, res) {
     session.engineResult = engineResult;
 
     const systemPrompt = buildSystemPrompt('analyzing', session.studentProfile);
-    const userContent = buildUserPrompt(session.studentProfile, engineResult.engine);
+    const knowledgeContext = getKnowledgeContext(session.studentProfile, engineResult.engine);
+    const userContent = buildUserPrompt(session.studentProfile, engineResult.engine, knowledgeContext);
 
     session.messages.push({ role: 'user', content: userContent });
 
@@ -476,6 +644,10 @@ async function handleV3Chat(req, res) {
       session.phase = 'greeting';
     } else if (isProfileReady(session.studentProfile) && session.phase !== 'followup') {
       phase = 'analyzing';
+    } else if (isProfileHalfReady(session.studentProfile) && !isProfileReady(session.studentProfile) && session.phase !== 'half_analyzing' && session.phase !== 'analyzing') {
+      // V4: 半分析阶段 — 3/4 核心字段齐全但不满足完整分析条件
+      phase = 'half_analyzing';
+      session.phase = 'half_analyzing';
     } else if (session.phase === 'analyzing' && session.engineResult) {
       phase = 'followup';
       session.phase = 'followup';
@@ -488,8 +660,9 @@ async function handleV3Chat(req, res) {
     const systemPrompt = buildSystemPrompt(phase, session.studentProfile);
 
     let userContent = message || '';
-    if (phase === 'gathering' || phase === 'greeting') {
-      const gatheringCtx = buildUserPrompt(session.studentProfile, null);
+    if (phase === 'gathering' || phase === 'greeting' || phase === 'half_analyzing') {
+      const knowledgeCtx = getKnowledgeContext(session.studentProfile, null);
+      const gatheringCtx = buildUserPrompt(session.studentProfile, null, knowledgeCtx);
       if (gatheringCtx) {
         userContent = userContent
           ? `${gatheringCtx}\n\n用户刚说：${userContent}`
@@ -510,9 +683,9 @@ async function handleV3Chat(req, res) {
       }
     }
 
-    // AI 调用
+    // AI 调用（V4: 带 function calling，LLM 可自主查数据、搜网络）
     const maxTokens = phase === 'analyzing' ? 4096 : 2048;
-    const result = await callAI(providerId || null, apiKey, systemPrompt, chatMessages.slice(-15), maxTokens);
+    const { text: result } = await callAIWithTools(providerId || null, apiKey, systemPrompt, chatMessages, maxTokens);
 
     if (!result) {
       const fallback = buildFallbackResponse(session.studentProfile, session.engineResult?.engine || null);
@@ -560,7 +733,8 @@ async function handleV3Chat(req, res) {
         // 追加分析生成
         try {
           const analysisPrompt = buildSystemPrompt('analyzing', session.studentProfile);
-          const analysisUserMsg = buildUserPrompt(session.studentProfile, engineResult.engine);
+          const analysisKnowledgeCtx = getKnowledgeContext(session.studentProfile, engineResult.engine);
+          const analysisUserMsg = buildUserPrompt(session.studentProfile, engineResult.engine, analysisKnowledgeCtx);
           const analysisMessages = [
             { role: 'user', content: analysisUserMsg }
           ];
@@ -576,7 +750,8 @@ async function handleV3Chat(req, res) {
     } else if (phase === 'analyzing' && session.engineResult && !session.engineResult._delivered) {
       // 已经运行过引擎但还没在对话中输出 → 这次补充分析
       const analysisPrompt = buildSystemPrompt('analyzing', session.studentProfile);
-      const analysisUserMsg = buildUserPrompt(session.studentProfile, session.engineResult.engine);
+      const analysisKnowledgeCtx2 = getKnowledgeContext(session.studentProfile, session.engineResult.engine);
+      const analysisUserMsg = buildUserPrompt(session.studentProfile, session.engineResult.engine, analysisKnowledgeCtx2);
       const analysisMessages = [
         { role: 'user', content: analysisUserMsg }
       ];
@@ -787,21 +962,52 @@ app.post('/api/recommend-v2', (req, res) => {
 
 app.post('/api/rank-query', (req, res) => {
   try {
-    const { rank, score, province, subject, major_id } = req.body;
+    const { rank, score, province, subject, major_id, keyword } = req.body;
 
     if (!province || !subject) {
       return res.status(400).json({ error: '缺少 province / subject' });
     }
 
+    // 优先检查用户自定义数据
+    const userResult = queryUserData({ province, rank, score, keyword });
+    if (userResult) {
+      return res.json({ status: 'success', data: userResult, source: 'user_data' });
+    }
+
     const result = rankQuery({ rank, score, province, subject, major_id });
-    res.json({ status: 'success', data: result });
+    res.json({ status: 'success', data: result, source: 'db' });
   } catch (error) {
     console.error('[rank-query] 错误:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
+// ========== API: 联网搜索 ==========
+
+app.get('/api/search', async (req, res) => {
+  try {
+    const { q, n } = req.query;
+    if (!q) return res.status(400).json({ error: '缺少 q 参数' });
+    const results = await webSearch(q, parseInt(n) || 5);
+    res.json({ status: 'success', results });
+  } catch (error) {
+    console.error('[search] 错误:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ========== API: 重置会话 ==========
+
+app.post('/api/reload-userdata', (req, res) => {
+  const count = loadUserData();
+  res.json({ status: 'success', count, message: `已加载 ${count} 条自定义数据` });
+});
+
+app.get('/api/userdata', (req, res) => {
+  const data = getUserData();
+  const provinces = [...new Set(data.map(r => r.province))];
+  res.json({ count: data.length, provinces, data });
+});
 
 app.post('/api/reset', (req, res) => {
   const { sessionId } = req.body;
@@ -834,6 +1040,9 @@ if (require.main === module) {
     console.log('');
     console.log('📌 按 Ctrl+C 停止');
     console.log('');
+
+    // 预热 RAG 知识库索引
+    warmupRAG();
   });
 }
 

@@ -137,7 +137,7 @@
     <!-- 主聊天区 -->
     <main class="chat-main">
       <header class="chat-header">
-        <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+        <button class="menu-toggle" onclick="event.stopPropagation();toggleSidebar()">☰</button>
         <div>
           <h1>AI 高考规划师</h1>
           <div class="chat-header-sub">像真人老师一样聊天，逐步帮你理清志愿方向</div>
@@ -162,6 +162,13 @@
 
       <!-- 输入区 -->
       <div class="chat-input-area">
+        <!-- 快捷入口 -->
+        <div class="quick-starters" id="quickStarters">
+          <button class="starter-chip" onclick="selectStarter('我是广东物理类考生，600分，帮我推荐专业和学校')">🎯 广东物理600分</button>
+          <button class="starter-chip" onclick="selectStarter('我不知道学什么好，你先问我几个问题帮我理方向')">🤔 不知道学什么</button>
+          <button class="starter-chip" onclick="selectStarter('想学计算机，帮我看看合不合适')">💻 想学计算机</button>
+          <button class="starter-chip" onclick="selectStarter('家庭条件一般，想找个稳定好就业的方向')">🏠 家庭条件一般求稳</button>
+        </div>
         <div class="chat-input-row" id="chatInputRow">
           <input
             type="text"

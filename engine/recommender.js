@@ -7,13 +7,10 @@
 // 输入: user 画像 → 输出: { majors, schools, risks, summary }
 
 const runEngine = require('./engine');
-const { rankQuery } = require('./rankEngine');
+const { rankQuery } = require('./admissionQuery');
 const fs = require('fs');
 const path = require('path');
 
-const v2Data = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '../data/admission-v2.json'), 'utf8')
-);
 const majorsData = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../data/majors.json'), 'utf8')
 );
@@ -44,8 +41,8 @@ function recommend(user) {
     ...engineResult.ranked.safety.map(m => ({ ...m, engine_tier: 'safety' }))
   ];
 
-  // 前 5 个推荐专业
-  const topMajors = majorRanking.slice(0, 5);
+  // 前 8 个推荐专业（V4 扩展）
+  const topMajors = majorRanking.slice(0, 8);
 
   // ===== Layer 2: 学校层（位次匹配）=====
   const schoolResults = [];

@@ -199,6 +199,246 @@
       "salary_range": "应届12-25万，5年后20-40万（经验积累型）",
       "key_risk": "需要物理+计算机交叉能力，学习难度大。行业发展受政策影响。",
       "zxf_quote": "国家砸钱搞芯片和高端制造，这个方向是未来十年最稳的理工科。比纯计算机抗卷。"
+    },
+    {
+      "id": "software_engineering",
+      "name": "软件工程",
+      "category": "理工科",
+      "tags": ["高薪", "就业广", "实践性强", "技术迭代快"],
+      "ai_replace_risk": "medium",
+      "fortune500_recruit": true,
+      "base_scores": {
+        "salary": 9,
+        "stability": 7,
+        "risk": 6,
+        "city_opportunity": 10,
+        "interest_appeal": 7,
+        "school_level": 6
+      },
+      "career_path": "互联网公司/软件企业/金融科技/游戏行业/创业",
+      "salary_range": "应届12-35万，5年后25-70万（看城市和技术栈）",
+      "key_risk": "技术迭代快需持续学习，低端外包岗位被AI冲击，35岁后需转型管理或架构",
+      "zxf_quote": "代码写得好，工作不难找。但别只会写CRUD，往架构和AI方向靠。终身学习不是鸡汤，是生存。"
+    },
+    {
+      "id": "artificial_intelligence",
+      "name": "人工智能",
+      "category": "理工科",
+      "tags": ["风口", "高薪", "数学要求极高", "名校卷"],
+      "ai_replace_risk": "low",
+      "fortune500_recruit": true,
+      "base_scores": {
+        "salary": 10,
+        "stability": 8,
+        "risk": 4,
+        "city_opportunity": 9,
+        "interest_appeal": 9,
+        "school_level": 9
+      },
+      "career_path": "AI公司算法岗/大厂AI Lab/自动驾驶/金融量化/科研院所",
+      "salary_range": "应届25-60万（算法岗），5年后50-150万+（顶尖人才上不封顶）",
+      "key_risk": "对数学和编程要求极高，非顶尖学校毕业生竞争力弱。行业变化极快，需要持续读论文。",
+      "zxf_quote": "AI是未来十年最大的红利，但这是神仙打架的赛道。数学不拔尖的别来送人头。"
+    },
+    {
+      "id": "electronic_engineering",
+      "name": "电子信息工程",
+      "category": "理工科",
+      "tags": ["硬科技", "芯片相关", "国产替代", "政策红利"],
+      "ai_replace_risk": "low",
+      "fortune500_recruit": true,
+      "base_scores": {
+        "salary": 8,
+        "stability": 8,
+        "risk": 3,
+        "city_opportunity": 8,
+        "interest_appeal": 6,
+        "school_level": 7
+      },
+      "career_path": "半导体/芯片设计/通信设备/消费电子/军工电子",
+      "salary_range": "应届12-25万，5年后20-50万（芯片方向溢价高）",
+      "key_risk": "学习难度大（模电数电信号处理），行业周期性波动。芯片方向需要读研。",
+      "zxf_quote": "芯片被卡脖子，国家砸了上万亿。学这个就是站在风口上，但前提是你学得会。"
+    },
+    {
+      "id": "communication_engineering",
+      "name": "通信工程",
+      "category": "理工科",
+      "tags": ["5G/6G", "华为中兴", "基础设施", "稳定"],
+      "ai_replace_risk": "low",
+      "fortune500_recruit": true,
+      "base_scores": {
+        "salary": 7,
+        "stability": 8,
+        "risk": 4,
+        "city_opportunity": 7,
+        "interest_appeal": 5,
+        "school_level": 7
+      },
+      "career_path": "华为中兴/三大运营商/通信设备商/互联网公司/军工",
+      "salary_range": "应届12-22万，5年后18-40万（设备商高于运营商）",
+      "key_risk": "行业高度集中（华为中兴占大头），非顶尖院校进大厂难。运营商稳定但薪资天花板低。",
+      "zxf_quote": "通信是国民基础设施，5G之后还有6G。选这个不愁没饭吃，但想发财得去设备商。"
+    },
+    {
+      "id": "civil_engineering",
+      "name": "土木工程",
+      "category": "理工科",
+      "tags": ["基建降温", "工地苦", "国企多", "周期下行"],
+      "ai_replace_risk": "low",
+      "fortune500_recruit": false,
+      "base_scores": {
+        "salary": 5,
+        "stability": 7,
+        "risk": 6,
+        "city_opportunity": 4,
+        "interest_appeal": 4,
+        "school_level": 6
+      },
+      "career_path": "建筑公司/设计院/房地产/基建投资/考公",
+      "salary_range": "应届6-12万（工地补贴另算），5年后10-20万，天花板明显",
+      "key_risk": "基建高峰期已过，房地产下行。工作环境艰苦（工地/外派），女生慎入。行业在萎缩。",
+      "zxf_quote": "过去三十年土木是造富神话，未来三十年可不好说。家里没建筑背景的，慎重。"
+    },
+    {
+      "id": "mechanical_engineering",
+      "name": "机械工程",
+      "category": "理工科",
+      "tags": ["万金油", "传统工科", "制造业", "下限稳上限低"],
+      "ai_replace_risk": "medium",
+      "fortune500_recruit": true,
+      "base_scores": {
+        "salary": 6,
+        "stability": 7,
+        "risk": 4,
+        "city_opportunity": 6,
+        "interest_appeal": 5,
+        "school_level": 6
+      },
+      "career_path": "汽车制造/航空航天/装备制造/机器人/家电",
+      "salary_range": "应届8-15万，5年后12-25万（新能源汽车方向溢价高）",
+      "key_risk": "传统机械薪资天花板低，需主动向自动化/机器人/新能源汽车方向转型。纯机械岗位在减少。",
+      "zxf_quote": "机械是工业之母，但传统方向在走下坡。想学就往智能装备、新能源汽车靠。"
+    },
+    {
+      "id": "nursing",
+      "name": "护理学",
+      "category": "医学",
+      "tags": ["刚需", "好就业", "辛苦", "编制多"],
+      "ai_replace_risk": "low",
+      "fortune500_recruit": false,
+      "base_scores": {
+        "salary": 5,
+        "stability": 9,
+        "risk": 2,
+        "city_opportunity": 7,
+        "interest_appeal": 4,
+        "school_level": 4
+      },
+      "career_path": "三甲医院/社区医院/养老机构/医药公司/出国",
+      "salary_range": "应届6-12万（三甲），5年后10-18万（护士长更高）。一线城市三甲可达20万+",
+      "key_risk": "工作辛苦（三班倒/体力活），社会地位不如医生，晋升空间有限。但永远不会失业。",
+      "zxf_quote": "护理是真正的铁饭碗，老龄化社会最缺的就是护士。不怕吃苦的，这个比很多本科专业强。"
+    },
+    {
+      "id": "accounting",
+      "name": "会计学",
+      "category": "文科/商科",
+      "tags": ["考证为王", "万金油", "下限稳", "上限看证书"],
+      "ai_replace_risk": "high",
+      "fortune500_recruit": true,
+      "base_scores": {
+        "salary": 6,
+        "stability": 7,
+        "risk": 6,
+        "city_opportunity": 8,
+        "interest_appeal": 5,
+        "school_level": 5
+      },
+      "career_path": "会计师事务所/企业财务/银行/税务局/审计",
+      "salary_range": "应届6-10万，CPA持证后15-30万，四大起薪12-18万",
+      "key_risk": "基础记账被AI和财务软件替代加速。没CPA证书天花板极低。行业严重内卷。",
+      "zxf_quote": "会计不考CPA就是记账员，考了CPA才是财务人。AI时代基础会计岗位在消失，往税务筹划和管理会计走。"
+    },
+    {
+      "id": "chinese_literature",
+      "name": "汉语言文学",
+      "category": "文科",
+      "tags": ["考公大户", "编制路径", "万金油", "门槛低"],
+      "ai_replace_risk": "medium",
+      "fortune500_recruit": false,
+      "base_scores": {
+        "salary": 5,
+        "stability": 6,
+        "risk": 5,
+        "city_opportunity": 6,
+        "interest_appeal": 6,
+        "school_level": 5
+      },
+      "career_path": "公务员/教师/编辑出版/新媒体/文秘行政",
+      "salary_range": "应届5-10万，编制内8-15万（含绩效），新媒体方向差异大",
+      "key_risk": "就业方向分散，非考公考编路径薪资偏低。AI写作工具对初级文案岗位有冲击。",
+      "zxf_quote": "文科考公第一专业。汉语言+法学，公务员考试的黄金组合。你如果就想要个编制，这是最稳的路。"
+    },
+    {
+      "id": "mathematics",
+      "name": "数学与应用数学",
+      "category": "理工科",
+      "tags": ["基础学科", "转行万能", "考研跳板", "上限极高"],
+      "ai_replace_risk": "low",
+      "fortune500_recruit": true,
+      "base_scores": {
+        "salary": 7,
+        "stability": 7,
+        "risk": 5,
+        "city_opportunity": 8,
+        "interest_appeal": 7,
+        "school_level": 8
+      },
+      "career_path": "金融量化/数据科学/AI算法/教师/科研",
+      "salary_range": "本科就业面窄（5-10万），读研后转金融/AI可达20-60万+",
+      "key_risk": "本科直接就业竞争力弱，基本需要读研。学起来极枯燥，不是真爱很难坚持。",
+      "zxf_quote": "数学是理工科的元学科。本科学数学，研究生转金融、AI、计算机，降维打击。但前提是你真的学得进去。"
+    },
+    {
+      "id": "stomatology",
+      "name": "口腔医学",
+      "category": "医学",
+      "tags": ["金饭碗", "越老越吃香", "收入天花板高", "创业容易"],
+      "ai_replace_risk": "low",
+      "fortune500_recruit": false,
+      "base_scores": {
+        "salary": 9,
+        "stability": 8,
+        "risk": 2,
+        "city_opportunity": 8,
+        "interest_appeal": 7,
+        "school_level": 7
+      },
+      "career_path": "口腔医院/综合医院口腔科/私人诊所/自己开业",
+      "salary_range": "应届8-15万，5年后15-40万，自己开诊所收入无上限",
+      "key_risk": "学费高（医学类通病），前期投入大。需要动手能力强，手残党慎入。考研竞争激烈。",
+      "zxf_quote": "口腔是医学里性价比最高的。不用值夜班，不用面对生死，学好了自己开店收入远超三甲主任。"
+    },
+    {
+      "id": "pharmacy",
+      "name": "药学",
+      "category": "医学",
+      "tags": ["稳定", "药企就业", "研发or销售", "两极化"],
+      "ai_replace_risk": "medium",
+      "fortune500_recruit": true,
+      "base_scores": {
+        "salary": 6,
+        "stability": 7,
+        "risk": 5,
+        "city_opportunity": 6,
+        "interest_appeal": 5,
+        "school_level": 7
+      },
+      "career_path": "药企研发/医院药剂科/医药销售/CRO公司/药品监管",
+      "salary_range": "应届6-12万，药企研发5年后15-25万，医药代表收入差异极大（5-50万）",
+      "key_risk": "研发岗需要读研读博，销售岗专业门槛低竞争大。仿制药集采压缩行业利润。",
+      "zxf_quote": "药学不是医学，别搞混了。做研发要读到博士，做销售高中毕业也能干。想清楚你走哪条路。"
     }
   ]
 }
