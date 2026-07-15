@@ -1,826 +1,547 @@
-// public/app.js
-// V3: AI 高考规划师 · 启发式对话前端
+const PROVINCES = ['北京','上海','广东','浙江','江苏','山东','河南','河北','湖北','湖南','四川','重庆','福建','安徽','江西','陕西','山西','辽宁','吉林','黑龙江','天津','广西','云南','贵州','甘肃','内蒙古','新疆','海南','宁夏','青海','西藏'];
+const PROFILE_META = {
+  score: ['分数', value => `${value} 分`],
+  rank: ['全省位次', value => `第 ${Number(value).toLocaleString()} 名`],
+  province: ['省份', value => value],
+  subject: ['科类', value => value === 'science' ? '物理类 / 理科' : '历史类 / 文科'],
+  family_income: ['家庭条件', value => ({ low: '压力较大', medium: '普通工薪', high: '支持深造' }[value] || value)],
+  interest: ['兴趣方向', value => value],
+  city_preference: ['城市偏好', value => value ? '偏好大城市' : '城市不限'],
+  postgraduate: ['深造计划', value => value ? '计划考研' : '暂不确定'],
+};
+const PHASES = { greeting: '准备开始', gathering: '需求梳理', half_analyzing: '初步研判', analyzing: '方案生成', followup: '深度咨询' };
+const HISTORY_KEY = 'gaokao_agent_history_v1';
 
 const STATE = {
   sessionId: generateId(),
+  messages: [],
+  profile: {},
   profileStatus: null,
-  engineData: null,
-  recommendations: null,
-  schoolsData: null,
   phase: 'greeting',
+  providerId: localStorage.getItem('gaokao_provider') || '',
+  providers: [],
+  providerConfigured: false,
+  authError: false,
   isProcessing: false,
-  hasGreeted: false,
-  authError: false
+  activities: [],
 };
 
-// ========== 头像 ==========
-
-function getAvatarHtml() {
-  const hasKey = !!getApiKey();
-  let src;
-  if (!hasKey) {
-    src = '/avatar-offline.jpg';
-  } else if (STATE.authError) {
-    src = '/avatar-error.jpg';
-  } else {
-    src = '/avatar-ai.jpg';
-  }
-  return `<img src="${src}" class="avatar-img" alt="峰哥">`;
-}
-
-// ========== 初始化 ==========
-
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  populateProvinces();
   loadApiKey();
-  document.getElementById('chatInput').focus();
-  updateStaticAvatars();
+  renderProfile();
   renderHistoryList();
-
-  // 移动端：点击聊天区域关闭侧栏
-  document.querySelector('.chat-main').addEventListener('click', () => {
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar.classList.contains('open')) {
-      sidebar.classList.remove('open');
-    }
-  });
+  await loadProviders();
+  document.getElementById('chatInput').focus();
 });
 
 function generateId() {
-  return 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function updateStaticAvatars() {
-  const html = getAvatarHtml();
-  document.querySelectorAll('.avatar-static').forEach(el => {
-    el.innerHTML = html;
-  });
+function populateProvinces() {
+  const select = document.getElementById('province');
+  PROVINCES.forEach(province => select.add(new Option(province, province)));
 }
 
-// ========== API Key ==========
+async function loadProviders() {
+  const select = document.getElementById('providerSelect');
+  try {
+    const response = await fetch('/api/providers');
+    const payload = await response.json();
+    const providers = payload.data || [];
+    STATE.providers = providers;
+    providers.forEach(provider => {
+      const suffix = provider.configured ? ' · 服务端已配置' : '';
+      select.add(new Option(`${provider.name}${suffix}`, provider.id));
+    });
+    const configured = providers.find(item => item.configured);
+    const preferred = providers.find(item => item.id === STATE.providerId);
+    const fallback = configured || preferred || providers.find(item => item.id === 'deepseek') || providers[0];
+    STATE.providerId = preferred?.id || fallback?.id || '';
+    STATE.providerConfigured = !!providers.find(item => item.id === STATE.providerId)?.configured;
+    select.value = STATE.providerId;
+    updateConnectionStatus(providers.find(item => item.id === STATE.providerId)?.configured);
+  } catch (error) {
+    select.add(new Option('模型列表不可用', ''));
+    updateConnectionStatus(false, '服务未连接');
+  }
+}
 
 function loadApiKey() {
-  const saved = localStorage.getItem('claude_api_key');
-  if (saved) {
-    document.getElementById('apiKeyInput').value = saved;
-    updateModeBadge(true);
-    // 有 key 且还没打过招呼 → 自动触发 AI 打招呼
-    if (!STATE.hasGreeted) {
-      setTimeout(() => autoGreet(), 500);
-    }
-  }
+  const key = localStorage.getItem('gaokao_api_key') || localStorage.getItem('claude_api_key') || '';
+  document.getElementById('apiKeyInput').value = key;
+}
+
+function getApiKey() {
+  return localStorage.getItem('gaokao_api_key') || localStorage.getItem('claude_api_key') || '';
 }
 
 function onApiKeyChange(value) {
   const key = value.trim();
   STATE.authError = false;
-  if (key) {
-    localStorage.setItem('claude_api_key', key);
-    updateModeBadge(true);
-    updateStaticAvatars();
-    if (!STATE.hasGreeted) {
-      autoGreet();
-    }
-  } else {
-    localStorage.removeItem('claude_api_key');
-    updateModeBadge(false);
-    updateStaticAvatars();
-  }
+  if (key) localStorage.setItem('gaokao_api_key', key);
+  else localStorage.removeItem('gaokao_api_key');
+  updateConnectionStatus(!!key);
 }
 
-function getApiKey() {
-  return localStorage.getItem('claude_api_key') || '';
+function onProviderChange(value) {
+  STATE.providerId = value;
+  STATE.providerConfigured = !!STATE.providers.find(item => item.id === value)?.configured;
+  STATE.authError = false;
+  localStorage.setItem('gaokao_provider', value);
+  updateConnectionStatus(!!getApiKey());
 }
 
-// ========== 自动打招呼 ==========
-
-async function autoGreet() {
-  if (STATE.hasGreeted || STATE.isProcessing) return;
-  STATE.hasGreeted = true;
-  STATE.isProcessing = true;
-
-  updateChatStatus('🤔 AI 正在准备...');
-
-  try {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      STATE.isProcessing = false;
-      updateChatStatus('👋 输入 Key 开始');
-      return;
-    }
-
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: STATE.sessionId, apiKey })
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.detail || err.error || '请求失败');
-    }
-
-    const result = await response.json();
-    processResponse(result.data);
-    updateChatStatus('💬 聊天中');
-  } catch (error) {
-    console.log('[autoGreet]', error.message);
-    if (isAuthError(error)) handleAuthError();
-    updateChatStatus('👋 开始对话');
-  }
-
-  STATE.isProcessing = false;
+function toggleKeyVisibility() {
+  const input = document.getElementById('apiKeyInput');
+  input.type = input.type === 'password' ? 'text' : 'password';
 }
 
-// ========== 快捷入口 ==========
+function getAgentAvatarHtml() {
+  let src = '/avatar-offline.jpg';
+  if (STATE.authError) src = '/avatar-error.jpg';
+  else if (getApiKey() || STATE.providerConfigured) src = '/avatar-ai.jpg';
+  return `<img src="${src}" alt="启航 Agent">`;
+}
+
+function updateConnectionStatus(available, label) {
+  const element = document.getElementById('connectionStatus');
+  element.classList.toggle('online', !!available || !!getApiKey());
+  element.querySelector('span').textContent = label || (available || getApiKey() ? '模型可用' : '需要 API Key');
+}
 
 function selectStarter(text) {
   const input = document.getElementById('chatInput');
   input.value = text;
+  resizeComposer(input);
   sendMessage();
 }
 
-// ========== 主发送逻辑 ==========
+function handleComposerKey(event) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    sendMessage();
+  }
+}
+
+function resizeComposer(input) {
+  input.style.height = 'auto';
+  input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+}
 
 async function sendMessage() {
   const input = document.getElementById('chatInput');
   const message = input.value.trim();
   if (!message || STATE.isProcessing) return;
 
-  // 首次发送消息后隐藏快捷入口
-  const starters = document.getElementById('quickStarters');
-  if (starters) starters.style.display = 'none';
-
   input.value = '';
-  STATE.isProcessing = true;
-  input.disabled = true;
-
-  updateChatStatus('🤔 思考中...');
-
-  // 如果是第一条消息，隐藏欢迎语
-  const welcome = document.getElementById('welcomeMsg');
-  if (welcome) welcome.style.display = 'none';
-
-  addMessage('user', message);
-  const loadingMsg = addLoadingMessage();
+  resizeComposer(input);
+  beginProcessing();
+  hideWelcome();
+  addUserMessage(message);
+  const pending = addPendingMessage();
 
   try {
-    const apiKey = getApiKey();
-
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
         sessionId: STATE.sessionId,
-        apiKey: apiKey || undefined
-      })
+        apiKey: getApiKey() || undefined,
+        providerId: STATE.providerId || undefined,
+        clientProfile: STATE.profile,
+      }),
     });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.detail || err.error || '请求失败');
-    }
-
-    const result = await response.json();
-    loadingMsg.remove();
-    processResponse(result.data);
-    updateChatStatus('💬 聊天中');
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || payload.error || '请求失败');
+    STATE.authError = false;
+    pending.remove();
+    processResponse(payload.data);
   } catch (error) {
-    loadingMsg.remove();
-    if (isAuthError(error)) handleAuthError();
-    addMessage('assistant', '抱歉，出了一点问题：' + error.message +
-      '\n\n请确认服务器已启动（npm start），API Key 是否正确。');
-    updateChatStatus('⚠️ 出错');
+    STATE.authError = /API Key|401|403|鉴权|认证/.test(error.message);
+    pending.remove();
+    addAssistantMessage(`这轮没有完成：${error.message}\n\n请检查模型配置后重试。`, { agentTrace: [] });
+    setAgentStatus('error', '执行失败');
+  } finally {
+    endProcessing();
   }
+}
 
+function beginProcessing() {
+  STATE.isProcessing = true;
+  document.getElementById('chatInput').disabled = true;
+  document.getElementById('sendBtn').disabled = true;
+  setAgentStatus('working', 'Agent 运行中');
+}
+
+function endProcessing() {
   STATE.isProcessing = false;
+  const input = document.getElementById('chatInput');
   input.disabled = false;
+  document.getElementById('sendBtn').disabled = false;
+  if (!document.getElementById('chatStatus').classList.contains('error')) setAgentStatus('ready', '就绪');
   input.focus();
 }
 
-// ========== 响应处理 ==========
+function setAgentStatus(kind, text) {
+  const status = document.getElementById('chatStatus');
+  status.className = `agent-status ${kind}`;
+  status.querySelector('span').textContent = text;
+}
+
+function hideWelcome() {
+  const welcome = document.getElementById('welcomeMsg');
+  if (welcome) welcome.remove();
+}
+
+function addUserMessage(text) {
+  STATE.messages.push({ role: 'user', content: text });
+  const article = document.createElement('article');
+  article.className = 'message-row user-row';
+  article.innerHTML = `<div class="message-label">你</div><div class="message-bubble">${escapeHtml(text)}</div>`;
+  appendToConversation(article);
+  updateThreadTitle(text);
+}
+
+function addPendingMessage() {
+  const article = document.createElement('article');
+  article.className = 'message-row assistant-row pending-row';
+  article.innerHTML = `
+      <div class="agent-avatar">${getAgentAvatarHtml()}</div>
+    <div class="assistant-content">
+      <div class="pending-title">正在分析任务</div>
+      <div class="pending-steps"><span></span><span></span><span></span></div>
+      <div class="pending-caption">判断是否需要查询数据或更新画像</div>
+    </div>`;
+  appendToConversation(article);
+  return article;
+}
 
 function processResponse(data) {
-  STATE.authError = false;
-  STATE.profileStatus = data.profileStatus;
-  STATE.phase = data.phase;
-  STATE.engineData = data.engine;
-  STATE.recommendations = data.recommendations;
-  STATE.schoolsData = data.schools;
-
-  // 渲染消息（含可能的话题 chips 和引擎卡片）
-  addAssistantMessage(data.message, data.suggestions || [],
-    data.engineReady && data.engine, data.recommendations, data.schools);
-
-  // 更新画像指示器
-  if (data.profileStatus) {
-    updateProfileIndicator(data.profileStatus);
-  }
-
-  // 如果引擎刚给出结果，更新状态
-  if (data.engineReady && data.engine) {
-    updateChatStatus('📊 分析完成 · 继续聊');
-  }
-
-  // 自动保存到本地历史
-  saveCurrentToHistory();
-  renderHistoryList();
-
-  // 滚动到底部
-  scrollToBottom();
+  STATE.profileStatus = data.profileStatus || STATE.profileStatus;
+  STATE.profile = data.profile || STATE.profile;
+  STATE.phase = data.phase || STATE.phase;
+  document.getElementById('phaseLabel').textContent = PHASES[STATE.phase] || STATE.phase;
+  renderProfile();
+  addActivities(data.agentTrace || []);
+  addAssistantMessage(data.message || '本轮没有生成文字回复。', data);
+  saveCurrentChat();
 }
 
-// ========== 消息渲染 ==========
+function addAssistantMessage(text, data = {}) {
+  STATE.messages.push({ role: 'assistant', content: text, trace: data.agentTrace || [] });
+  const article = document.createElement('article');
+  article.className = 'message-row assistant-row';
 
-function addMessage(role, text) {
-  const container = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = `message ${role}`;
-  div.innerHTML = `
-    <div class="message-avatar">${role === 'assistant' ? getAvatarHtml() : '<img src="/avatar-user.jpg" class="avatar-img" alt="我">'}</div>
-    <div class="message-body">
-      <div class="message-text">${escapeHtml(text)}</div>
+  const trace = renderTrace(data.agentTrace || []);
+  const recommendations = renderRecommendationSummary(data.engine);
+  article.innerHTML = `
+    <div class="agent-avatar">${getAgentAvatarHtml()}</div>
+    <div class="assistant-content">
+      ${trace}
+      <div class="message-copy">${renderMarkdown(text)}</div>
+      ${recommendations}
+      ${renderSuggestions(data.suggestions || [])}
     </div>`;
-  container.appendChild(div);
-  scrollToBottom();
-  return div;
+  appendToConversation(article);
 }
 
-function addAssistantMessage(text, suggestions, engineData, recommendations, schoolsData) {
+function renderTrace(trace) {
+  if (!trace.length) return '';
+  const items = trace.map(item => `
+    <details class="tool-event ${item.status === 'error' ? 'failed' : ''}">
+      <summary>
+        <i></i><span>${escapeHtml(item.label || item.name)}</span>
+        <small>${escapeHtml(item.summary || '')}</small><b>⌄</b>
+      </summary>
+      <pre>${escapeHtml(JSON.stringify(item.args || {}, null, 2))}</pre>
+    </details>`).join('');
+  return `<div class="tool-trace"><div class="trace-heading">已完成 ${trace.length} 项操作</div>${items}</div>`;
+}
+
+function renderRecommendationSummary(engine) {
+  if (!engine) return '';
+  const groups = [
+    ['冲刺', engine.reach || [], 'reach'],
+    ['稳妥', engine.match || [], 'match'],
+    ['保底', engine.safety || [], 'safety'],
+  ].filter(([, items]) => items.length);
+  if (!groups.length) return '';
+  return `<div class="decision-grid">${groups.map(([label, items, cls]) => `
+    <div class="decision-column ${cls}">
+      <span>${label}</span>
+      ${items.slice(0, 2).map(item => `<strong>${escapeHtml(item.name)}</strong><small>匹配度 ${item.score}</small>`).join('')}
+    </div>`).join('')}</div>`;
+}
+
+function renderSuggestions(suggestions) {
+  if (!suggestions.length) return '';
+  return `<div class="suggestion-row">${suggestions.slice(0, 4).map(text => {
+    const title = text.split('——')[0].trim();
+    return `<button type="button" onclick="selectStarter(decodeURIComponent('${encodeURIComponent(title)}'))">${escapeHtml(title)}</button>`;
+  }).join('')}</div>`;
+}
+
+function appendToConversation(element) {
   const container = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'message assistant';
-
-  let bodyHtml = `<div class="message-text">${escapeHtml(text)}</div>`;
-
-  // 话题建议 chips
-  if (suggestions && suggestions.length > 0) {
-    bodyHtml += '<div class="suggestions-container">';
-    bodyHtml += '<div class="suggestions-label">💡 点击话题继续聊：</div>';
-    bodyHtml += '<div class="suggestions-chips">';
-    for (const s of suggestions) {
-      // 拆分话题名和解释（用 —— 分隔）
-      const parts = s.split(/[—\-]{1,2}/);
-      const title = parts[0].trim();
-      const desc = parts.length > 1 ? parts.slice(1).join('—').trim() : '';
-      bodyHtml += `
-        <div class="suggestion-chip" onclick="selectTopic('${escapeAttr(s)}')" title="${escapeAttr(desc)}">
-          ${escapeHtml(title)}
-          ${desc ? `<span class="chip-desc">${escapeHtml(desc)}</span>` : ''}
-        </div>`;
-    }
-    bodyHtml += '</div></div>';
-  }
-
-  // 引擎结果卡片
-  if (engineData) {
-    bodyHtml += buildRecommendCards(engineData);
-  }
-  if (recommendations && recommendations.school_layer) {
-    bodyHtml += buildV2SchoolCards(recommendations);
-  }
-  if (recommendations && recommendations.risk_layer) {
-    bodyHtml += buildRiskCards(recommendations.risk_layer);
-    bodyHtml += buildSummary(recommendations);
-  }
-  if (schoolsData && Object.keys(schoolsData).length > 0 &&
-      !(recommendations && recommendations.school_layer)) {
-    bodyHtml += buildSchoolCards(schoolsData);
-  }
-
-  div.innerHTML = `
-    <div class="message-avatar">${getAvatarHtml()}</div>
-    <div class="message-body">${bodyHtml}</div>`;
-  container.appendChild(div);
-  scrollToBottom();
-  return div;
+  container.appendChild(element);
+  requestAnimationFrame(() => container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }));
 }
 
-function addLoadingMessage() {
-  const container = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'message assistant';
-  div.id = 'loadingMsg';
-  div.innerHTML = `
-    <div class="message-avatar">${getAvatarHtml()}</div>
-    <div class="message-body">
-      <div class="typing-indicator">
-        <span></span><span></span><span></span>
-      </div>
-    </div>`;
-  container.appendChild(div);
-  scrollToBottom();
-  return div;
+function addActivities(trace) {
+  if (!trace.length) return;
+  STATE.activities.push(...trace.map(item => ({ ...item, time: new Date() })));
+  STATE.activities = STATE.activities.slice(-20);
+  const list = document.getElementById('activityList');
+  list.innerHTML = STATE.activities.slice().reverse().map(item => `
+    <div class="activity-item ${item.status === 'error' ? 'failed' : ''}">
+      <i></i><div><strong>${escapeHtml(item.label || item.name)}</strong><span>${escapeHtml(item.summary || '')}</span></div>
+      <time>${item.durationMs || 0}ms</time>
+    </div>`).join('');
+  document.getElementById('activityCount').textContent = String(STATE.activities.length);
 }
 
-// ========== 话题选择 ==========
-
-function selectTopic(topic) {
-  const input = document.getElementById('chatInput');
-  // 只取话题名（破折号之前的部分）
-  const parts = topic.split(/[—\-]{1,2}/);
-  const title = parts[0].trim();
-  input.value = title;
-  input.focus();
-  // 不自动发送，让用户决定要不要加什么再发
+function renderProfile() {
+  const profile = STATE.profile || {};
+  const status = STATE.profileStatus || { percent: 0, filled: [] };
+  document.getElementById('profilePercent').textContent = `${status.percent || 0}% 完整`;
+  document.getElementById('profileBarFill').style.width = `${status.percent || 0}%`;
+  document.getElementById('profileFields').innerHTML = Object.entries(PROFILE_META).map(([key, [label, format]]) => {
+    const hasValue = profile[key] !== undefined && profile[key] !== null && profile[key] !== '';
+    const value = hasValue ? format(profile[key]) : '待补充';
+    return `<div class="profile-row ${hasValue ? 'filled' : ''}"><span>${label}</span><strong>${escapeHtml(String(value))}</strong></div>`;
+  }).join('');
 }
 
-// ========== 画像指示器 ==========
-
-function updateProfileIndicator(status) {
-  if (!status) return;
-
-  const indicator = document.getElementById('profileIndicator');
-  indicator.style.display = 'block';
-
-  const barFill = document.getElementById('profileBarFill');
-  barFill.style.width = status.percent + '%';
-
-  const fieldsDiv = document.getElementById('profileFields');
-  const allFields = [
-    { key: 'score', label: '分数' },
-    { key: 'province', label: '省份' },
-    { key: 'subject', label: '科类' },
-    { key: 'family_income', label: '家庭条件' },
-    { key: 'rank', label: '排名' },
-    { key: 'interest', label: '兴趣' },
-    { key: 'city_preference', label: '城市偏好' },
-    { key: 'postgraduate', label: '考研计划' }
-  ];
-
+function renderMarkdown(text) {
+  const lines = String(text || '').replace(/<!--PROFILE[\s\S]*?-->/g, '').split('\n');
   let html = '';
-  for (const f of allFields) {
-    const isFilled = status.filled && status.filled.includes(f.key);
-    html += `<div class="profile-field ${isFilled ? 'filled' : ''}">${isFilled ? '✅' : '⏳'} ${f.label}</div>`;
-  }
-  fieldsDiv.innerHTML = html;
+  let inList = false;
+  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  lines.forEach(raw => {
+    const line = raw.trim();
+    if (!line) { closeList(); return; }
+    if (/^#{1,3}\s/.test(line)) {
+      closeList();
+      html += `<h3>${formatInline(line.replace(/^#{1,3}\s+/, ''))}</h3>`;
+    } else if (/^(?:[-*]|\d+\.)\s+/.test(line)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${formatInline(line.replace(/^(?:[-*]|\d+\.)\s+/, ''))}</li>`;
+    } else if (line.startsWith('→')) {
+      closeList();
+      html += `<p class="topic-line">${formatInline(line.slice(1).trim())}</p>`;
+    } else {
+      closeList();
+      html += `<p>${formatInline(line)}</p>`;
+    }
+  });
+  closeList();
+  return html;
 }
 
-// ========== 侧边栏 & 快速模式 ==========
-
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
+function formatInline(text) {
+  let safe = escapeHtml(text);
+  const links = [];
+  safe = safe.replace(/\[([^\]]+)]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
+    links.push(`<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+    return `@@LINK${links.length - 1}@@`;
+  });
+  safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  safe = safe.replace(/(^|\s)(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+  safe = safe.replace(/@@LINK(\d+)@@/g, (_, index) => links[Number(index)]);
+  return safe;
 }
 
-function toggleQuickMode() {
-  const form = document.getElementById('studentForm');
-  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 }
 
-async function submitQuickMode() {
+function updateThreadTitle(message) {
+  if (STATE.messages.filter(item => item.role === 'user').length > 1) return;
+  document.getElementById('threadTitle').textContent = message.slice(0, 18) + (message.length > 18 ? '…' : '');
+}
+
+function openProfileDialog() {
+  Object.keys(PROFILE_META).forEach(key => {
+    const input = document.getElementById(key);
+    if (input && STATE.profile[key] !== undefined && STATE.profile[key] !== null) input.value = String(STATE.profile[key]);
+  });
+  document.getElementById('profileDialog').showModal();
+}
+
+async function submitQuickMode(event) {
+  event.preventDefault();
   if (STATE.isProcessing) return;
-
   const student = {
-    score: parseInt(document.getElementById('score').value) || 0,
+    score: Number(document.getElementById('score').value) || null,
+    rank: Number(document.getElementById('rank').value) || null,
     province: document.getElementById('province').value,
-    rank: parseInt(document.getElementById('rank').value) || 0,
     subject: document.getElementById('subject').value,
-    family_income: document.getElementById('family_income').value,
+    family_income: document.getElementById('family_income').value || 'medium',
     interest: document.getElementById('interest').value.trim(),
     city_preference: document.getElementById('city_preference').value === 'true',
-    postgraduate: document.getElementById('postgraduate').value === 'true'
+    postgraduate: document.getElementById('postgraduate').value === 'true',
   };
-
-  if (!student.score || !student.province || !student.subject || !student.family_income) {
-    alert('请填写分数、省份、科类、家庭经济条件');
+  if (!student.score || !student.province || !student.subject) {
+    document.getElementById('score').reportValidity();
     return;
   }
-
-  STATE.isProcessing = true;
-  const btn = document.getElementById('quickSubmitBtn');
-  btn.disabled = true;
-  btn.textContent = '⏳ 分析中...';
-
-  // 隐藏表单
-  document.getElementById('studentForm').style.display = 'none';
-  const welcome = document.getElementById('welcomeMsg');
-  if (welcome) welcome.style.display = 'none';
-
-  addMessage('user', formatStudentInfo(student));
-  const loadingMsg = addLoadingMessage();
-  updateChatStatus('🤔 分析中...');
-
+  document.getElementById('profileDialog').close();
+  hideWelcome();
+  beginProcessing();
+  addUserMessage(`请按这份画像生成完整方案：${student.province}${student.subject === 'science' ? '物理类' : '历史类'}，${student.score}分${student.rank ? `，位次${student.rank}` : ''}。`);
+  const pending = addPendingMessage();
   try {
-    const apiKey = getApiKey();
     const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        student,
-        sessionId: STATE.sessionId,
-        apiKey: apiKey || undefined
-      })
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ student, sessionId: STATE.sessionId, apiKey: getApiKey() || undefined, providerId: STATE.providerId || undefined }),
     });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.detail || err.error || '请求失败');
-    }
-
-    const result = await response.json();
-    loadingMsg.remove();
-    processResponse(result.data);
-    updateChatStatus('📊 分析完成 · 继续聊');
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || payload.error || '请求失败');
+    pending.remove();
+    processResponse(payload.data);
   } catch (error) {
-    loadingMsg.remove();
-    if (isAuthError(error)) handleAuthError();
-    addMessage('assistant', '分析失败：' + error.message);
-    updateChatStatus('⚠️ 出错');
+    pending.remove();
+    addAssistantMessage(`画像分析没有完成：${error.message}`, {});
+  } finally {
+    endProcessing();
   }
-
-  STATE.isProcessing = false;
-  btn.disabled = false;
-  btn.textContent = '🚀 快速分析';
 }
-
-// ========== 重置 ==========
 
 async function resetChat() {
-  // 先保存当前会话到历史
-  saveCurrentToHistory();
-
+  if (STATE.messages.length) saveCurrentChat();
+  try {
+    await fetch('/api/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: STATE.sessionId }) });
+  } catch (_) {}
   STATE.sessionId = generateId();
+  STATE.messages = [];
+  STATE.profile = {};
   STATE.profileStatus = null;
-  STATE.engineData = null;
-  STATE.recommendations = null;
-  STATE.schoolsData = null;
+  STATE.activities = [];
   STATE.phase = 'greeting';
-  STATE.isProcessing = false;
-  STATE.hasGreeted = false;
-  STATE.authError = false;
-
-  const container = document.getElementById('chatMessages');
-  container.innerHTML = `
-    <div class="message assistant" id="welcomeMsg">
-      <div class="message-avatar avatar-static"></div>
-      <div class="message-body">
-        <div class="message-text">
-          <strong>同学你好，我是峰哥。</strong><br><br>
-          做了十年高考志愿规划，见过太多人选错路后悔。<br><br>
-          咱们就像聊天一样——你告诉我孩子的情况，我帮你分析。有什么说什么，想哪儿聊哪儿。
-        </div>
-      </div>
-    </div>`;
-
-  document.getElementById('profileIndicator').style.display = 'none';
-  document.getElementById('studentForm').style.display = 'none';
-  document.getElementById('chatInput').value = '';
-  document.getElementById('chatInput').disabled = false;
-  updateChatStatus('👋 新对话');
-  updateStaticAvatars();
-  updateModeBadge(!!getApiKey() && !STATE.authError);
-  renderHistoryList();
-
-  // 清除服务端会话
-  try {
-    await fetch('/api/reset', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: STATE.sessionId })
-    });
-  } catch (e) {}
-
-  // 重新打招呼
-  if (getApiKey()) {
-    setTimeout(() => autoGreet(), 300);
-  }
+  document.getElementById('threadTitle').textContent = '新咨询';
+  document.getElementById('phaseLabel').textContent = '需求梳理';
+  document.getElementById('activityList').innerHTML = '<div class="activity-empty">工具调用会显示在这里</div>';
+  document.getElementById('activityCount').textContent = '0';
+  document.getElementById('chatMessages').innerHTML = createWelcomeHtml();
+  renderProfile();
+  closeMobilePanels();
 }
 
-// ========== 状态指示 ==========
-
-function updateChatStatus(text) {
-  document.getElementById('chatStatus').textContent = text;
+function createWelcomeHtml() {
+  return `<div class="empty-state" id="welcomeMsg"><div class="empty-kicker">GAOKAO DECISION AGENT</div><h1>先说说你的情况</h1><p>分数、位次、省份、选科，知道多少说多少。Agent 会自己补齐问题、查数据并整理方案。</p><div class="starter-grid" id="quickStarters"><button type="button" onclick="selectStarter('我是广东物理类考生，600分，位次大约4万，帮我看看学校和专业')"><span>已有分数和位次</span><small>直接开始匹配学校</small></button><button type="button" onclick="selectStarter('我还不知道适合什么专业，你先通过提问帮我梳理方向')"><span>还没想好专业</span><small>先做方向判断</small></button><button type="button" onclick="selectStarter('家庭条件一般，我更看重就业稳定和投入产出比')"><span>优先考虑就业</span><small>从风险和回报出发</small></button><button type="button" onclick="selectStarter('帮我查一下2026年最新的高考志愿政策变化')"><span>查询最新政策</span><small>使用联网搜索</small></button></div></div>`;
 }
 
-function updateModeBadge(online) {
-  const badge = document.getElementById('modeBadge');
-  if (online) {
-    badge.textContent = 'AI 在线';
-    badge.className = 'mode-badge online';
-  } else {
-    badge.textContent = '离线模式';
-    badge.className = 'mode-badge';
-  }
+function getHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (_) { return []; }
 }
 
-function handleAuthError() {
-  STATE.authError = true;
-  updateModeBadge(false);
-  updateStaticAvatars();
-  updateChatStatus('🔑 Key 无效，请检查');
-}
-
-function isAuthError(error) {
-  const msg = error.message || '';
-  return /401|403|无效|Key|API key/i.test(msg);
-}
-
-// ========== 本地历史记录 ==========
-
-const HISTORY_KEY = 'gaokao_chat_history';
-const MSG_PREFIX = 'gaokao_msgs_';
-
-function getHistoryList() {
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-  } catch (e) { return []; }
-}
-
-function saveHistoryList(list) {
-  // 最多保留 20 条
-  const trimmed = list.slice(0, 20);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
-}
-
-function saveCurrentToHistory() {
-  const container = document.getElementById('chatMessages');
-  const msgs = [];
-  container.querySelectorAll('.message').forEach(el => {
-    const role = el.classList.contains('user') ? 'user' : 'assistant';
-    const textEl = el.querySelector('.message-text');
-    if (textEl) msgs.push({ role, text: textEl.textContent });
-  });
-  // 至少要有用户消息才保存
-  if (!msgs.some(m => m.role === 'user')) return;
-
-  const list = getHistoryList();
-  const title = msgs.find(m => m.role === 'user')?.text?.slice(0, 30) || '空对话';
-  const entry = {
+function saveCurrentChat() {
+  if (!STATE.messages.length) return;
+  const history = getHistory();
+  const first = STATE.messages.find(item => item.role === 'user')?.content || '新咨询';
+  const record = {
     id: STATE.sessionId,
-    title,
-    date: new Date().toLocaleString('zh-CN'),
-    timestamp: Date.now(),
-    phase: STATE.phase
+    title: first.slice(0, 28),
+    updatedAt: Date.now(),
+    messages: STATE.messages,
+    profile: STATE.profile,
+    profileStatus: STATE.profileStatus,
+    phase: STATE.phase,
+    activities: STATE.activities.map(item => ({ ...item, time: undefined })),
   };
-  // 去重
-  const filtered = list.filter(e => e.id !== STATE.sessionId);
-  filtered.unshift(entry);
-  saveHistoryList(filtered);
-  // 存消息
-  localStorage.setItem(MSG_PREFIX + STATE.sessionId, JSON.stringify(msgs));
-}
-
-function loadSession(sessionId) {
-  const raw = localStorage.getItem(MSG_PREFIX + sessionId);
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch (e) { return null; }
-}
-
-function switchToSession(sessionId) {
-  if (sessionId === STATE.sessionId) return;
-  const msgs = loadSession(sessionId);
-  if (!msgs) return;
-
-  // 保存当前会话
-  saveCurrentToHistory();
-
-  STATE.sessionId = sessionId;
-  STATE.profileStatus = null;
-  STATE.engineData = null;
-  STATE.recommendations = null;
-  STATE.schoolsData = null;
-  STATE.phase = 'followup';
-  STATE.isProcessing = false;
-  STATE.hasGreeted = true;
-
-  const container = document.getElementById('chatMessages');
-  container.innerHTML = '';
-  for (const m of msgs) {
-    addMessage(m.role, m.text);
-  }
-
-  document.getElementById('profileIndicator').style.display = 'none';
-  document.getElementById('studentForm').style.display = 'none';
-  document.getElementById('chatInput').value = '';
-  document.getElementById('chatInput').disabled = false;
-  updateChatStatus('📂 历史记录');
+  const next = [record, ...history.filter(item => item.id !== record.id)].slice(0, 20);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
   renderHistoryList();
-  scrollToBottom();
-}
-
-function deleteHistory(sessionId, event) {
-  event.stopPropagation();
-  const list = getHistoryList().filter(e => e.id !== sessionId);
-  saveHistoryList(list);
-  localStorage.removeItem(MSG_PREFIX + sessionId);
-  if (sessionId === STATE.sessionId) {
-    resetChat();
-  }
-  renderHistoryList();
-}
-
-function exportCurrentChat() {
-  const container = document.getElementById('chatMessages');
-  let text = '高考志愿规划师 · 对话记录\n';
-  text += `导出时间：${new Date().toLocaleString('zh-CN')}\n`;
-  text += '='.repeat(40) + '\n\n';
-
-  container.querySelectorAll('.message').forEach((el, i) => {
-    const role = el.classList.contains('user') ? '👤 我' : '🧭 AI规划师';
-    const textEl = el.querySelector('.message-text');
-    if (textEl) {
-      text += `${role}:\n${textEl.textContent}\n\n`;
-    }
-  });
-
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `高考志愿咨询_${new Date().toISOString().slice(0, 10)}.txt`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function renderHistoryList() {
-  const el = document.getElementById('historyList');
-  if (!el) return;
-  const list = getHistoryList();
-
-  if (list.length === 0) {
-    el.innerHTML = '<div class="history-empty">暂无历史记录</div>';
+  const list = document.getElementById('historyList');
+  const history = getHistory();
+  if (!history.length) {
+    list.innerHTML = '<div class="history-empty">还没有咨询记录</div>';
     return;
   }
-
-  el.innerHTML = list.map(e => `
-    <div class="history-item ${e.id === STATE.sessionId ? 'active' : ''}" onclick="switchToSession('${e.id}')">
-      <div class="history-item-title">${escapeHtml(e.title)}</div>
-      <div class="history-item-date">${e.date}</div>
-      <button class="history-item-del" onclick="deleteHistory('${e.id}', event)" title="删除">×</button>
-    </div>
-  `).join('');
+  list.innerHTML = history.map(item => `<div class="history-item ${item.id === STATE.sessionId ? 'active' : ''}"><button type="button" onclick="loadChat('${item.id}')"><strong>${escapeHtml(item.title)}</strong><span>${formatRelativeTime(item.updatedAt)}</span></button><button class="history-delete" type="button" onclick="deleteChat(event, '${item.id}')" aria-label="删除">×</button></div>`).join('');
 }
 
-// ========== 引擎结果卡片（从 V2 保留）==========
-
-function buildRecommendCards(engine) {
-  if (!engine) return '';
-
-  const sections = [
-    { key: 'reach', label: '🔥 冲刺', cls: 'reach', data: engine.reach },
-    { key: 'match', label: '⚖️ 稳妥', cls: 'match', data: engine.match },
-    { key: 'safety', label: '🛡️ 保底', cls: 'safety', data: engine.safety },
-    { key: 'avoid', label: '⚠️ 不建议', cls: 'avoid', data: engine.avoid }
-  ];
-
-  let html = '<div class="recommend-cards">';
-  for (const sec of sections) {
-    if (!sec.data || sec.data.length === 0) continue;
-    html += `<div class="rec-section-title">${sec.label}</div>`;
-    html += '<div class="rec-cards-row">';
-    for (const m of sec.data) {
-      html += `
-        <div class="rec-card ${sec.cls}">
-          <div class="major-name">${escapeHtml(m.name)}</div>
-          <div class="major-meta">
-            <span>${escapeHtml(m.category || '')}</span>
-            <span>得分 ${m.score}</span>
-            ${m.risk ? `<span>AI风险: ${m.risk}</span>` : ''}
-          </div>
-          ${m.quote ? `<div class="major-quote">💬 ${escapeHtml(m.quote)}</div>` : ''}
-        </div>`;
-    }
-    html += '</div>';
-  }
-  html += '</div>';
-  return html;
-}
-
-function buildSchoolCards(schoolsData) {
-  let html = '<div class="recommend-cards">';
-  html += '<div class="rec-section-title" style="color:#7c3aed;">🏫 可报考学校参考</div>';
-
-  for (const [majorId, data] of Object.entries(schoolsData)) {
-    if (!data.reach?.length && !data.match?.length && !data.safety?.length) continue;
-
-    html += `<div style="font-weight:600;font-size:14px;margin:8px 0 4px;color:#4c1d95;">📚 ${escapeHtml(data.major_name)}</div>`;
-    html += '<div class="rec-cards-row">';
-
-    const allSchools = [
-      ...(data.reach || []).map(s => ({ ...s, tier: 'reach' })),
-      ...(data.match || []).map(s => ({ ...s, tier: 'match' })),
-      ...(data.safety || []).map(s => ({ ...s, tier: 'safety' }))
-    ];
-
-    for (const s of allSchools) {
-      const tierLabel = s.tier === 'reach' ? '🔥冲' : s.tier === 'match' ? '⚖️稳' : '🛡️保';
-      const tierCls = s.tier === 'reach' ? 'reach' : s.tier === 'match' ? 'match' : 'safety';
-      html += `
-        <div class="rec-card ${tierCls}">
-          <div class="major-name">${escapeHtml(s.school_name)}</div>
-          <div class="major-meta">
-            <span>${escapeHtml(s.school_level || '')}</span>
-            <span>${escapeHtml(s.school_city || '')}</span>
-          </div>
-          <div class="major-meta" style="margin-top:2px;">
-            <span>最低 ${s.min_score} 分</span>
-            ${s.min_rank ? `<span>位次 ${s.min_rank}</span>` : ''}
-            <span>${tierLabel} · ${s.confidence}</span>
-          </div>
-        </div>`;
-    }
-    html += '</div>';
-  }
-  html += '</div>';
-  return html;
-}
-
-function buildV2SchoolCards(recommendations) {
-  let html = '<div class="recommend-cards">';
-  html += '<div class="rec-section-title" style="color:#7c3aed;">🏫 位次匹配 · 可报考学校</div>';
-
-  for (const sm of (recommendations.school_layer || []).slice(0, 4)) {
-    const all = [
-      ...(sm.schools.reach || []).map(s => ({ ...s, tier: 'reach' })),
-      ...(sm.schools.match || []).map(s => ({ ...s, tier: 'match' })),
-      ...(sm.schools.safety || []).map(s => ({ ...s, tier: 'safety' }))
-    ];
-    if (all.length === 0) continue;
-
-    html += `<div style="font-weight:600;font-size:14px;margin:8px 0 4px;color:#4c1d95;">📚 ${escapeHtml(sm.major_name)} <span style="font-weight:400;font-size:12px;color:#888;">匹配度 ${sm.major_score}分</span></div>`;
-    html += '<div class="rec-cards-row">';
-
-    for (const s of all) {
-      const tierLabel = s.tier === 'reach' ? '🔥冲' : s.tier === 'match' ? '⚖️稳' : '🛡️保';
-      const tierCls = s.tier;
-      html += `
-        <div class="rec-card ${tierCls}">
-          <div class="major-name">${escapeHtml(s.school_name)} <span style="font-size:12px;color:#888;font-weight:400;">${escapeHtml(s.school_level || '')}</span></div>
-          <div class="major-meta">
-            <span>📍 ${escapeHtml(s.school_city || '')}</span>
-            <span>📊 位次 ${s.min_rank || '?'}</span>
-          </div>
-          <div class="major-meta" style="margin-top:4px;">
-            <span style="font-weight:700;color:${s.admission_probability >= 70 ? '#059669' : s.admission_probability >= 40 ? '#d97706' : '#dc2626'}">录取概率 ${s.admission_probability}%</span>
-            <span>${tierLabel}</span>
-          </div>
-          ${s.rank_trend ? `<div style="font-size:11px;color:#6b7280;margin-top:4px;">${s.rank_trend}</div>` : ''}
-        </div>`;
-    }
-    html += '</div>';
-  }
-  html += '</div>';
-  return html;
-}
-
-function buildRiskCards(riskLayer) {
-  if (!riskLayer.risks || riskLayer.risks.length === 0) return '';
-
-  let html = '<div class="recommend-cards">';
-  html += '<div class="rec-section-title" style="color:#dc2626;">⚠️ 风险分析</div>';
-  html += '<div class="rec-cards-row">';
-
-  for (const r of riskLayer.risks.slice(0, 5)) {
-    const riskColor = r.risk_score <= 3 ? '#059669' : r.risk_score <= 5 ? '#d97706' : '#dc2626';
-    html += `
-      <div class="rec-card" style="border-left-color:${riskColor};background:#fef2f2;">
-        <div class="major-name">${escapeHtml(r.major_name)}</div>
-        <div class="major-meta">
-          <span style="color:${riskColor};font-weight:700;">${r.risk_level} (${r.risk_score}/10)</span>
-        </div>
-        ${r.warnings && r.warnings.length > 0 ? r.warnings.map(w => `<div style="font-size:12px;color:#6b7280;margin-top:3px;">• ${escapeHtml(w)}</div>`).join('') : ''}
-      </div>`;
-  }
-  html += '</div></div>';
-  return html;
-}
-
-function buildSummary(data) {
-  if (!data.summary) return '';
-  return `<div style="margin-top:12px;padding:12px 16px;background:#f0fdf4;border-radius:12px;border:1px solid #bbf7d0;font-size:14px;font-weight:600;color:#166534;">📋 ${escapeHtml(data.summary)}</div>`;
-}
-
-// ========== 工具函数 ==========
-
-function formatStudentInfo(s) {
-  const parts = [];
-  parts.push(`${s.score}分`);
-  parts.push(s.province);
-  if (s.rank) parts.push(`排名${s.rank}`);
-  parts.push(s.subject === 'science' ? '理科' : '文科');
-  parts.push(s.family_income === 'low' ? '家庭条件一般' :
-             s.family_income === 'medium' ? '家庭条件中等' : '家庭条件较好');
-  if (s.interest) parts.push(`兴趣：${s.interest}`);
-  parts.push(s.city_preference ? '想去大城市' : '城市不限');
-  parts.push(s.postgraduate ? '计划考研' : '暂无考研计划');
-  return parts.join(' · ');
-}
-
-function scrollToBottom() {
+function loadChat(id) {
+  const record = getHistory().find(item => item.id === id);
+  if (!record) return;
+  STATE.sessionId = record.id;
+  STATE.messages = record.messages || [];
+  STATE.profile = record.profile || {};
+  STATE.profileStatus = record.profileStatus;
+  STATE.phase = record.phase || 'followup';
+  STATE.activities = record.activities || [];
   const container = document.getElementById('chatMessages');
-  requestAnimationFrame(() => {
-    container.scrollTop = container.scrollHeight;
+  container.innerHTML = '';
+  STATE.messages.forEach(message => {
+    if (message.role === 'user') {
+      const article = document.createElement('article');
+      article.className = 'message-row user-row';
+      article.innerHTML = `<div class="message-label">你</div><div class="message-bubble">${escapeHtml(message.content)}</div>`;
+      container.appendChild(article);
+    } else {
+      const article = document.createElement('article');
+      article.className = 'message-row assistant-row';
+      article.innerHTML = `<div class="agent-avatar">${getAgentAvatarHtml()}</div><div class="assistant-content">${renderTrace(message.trace || [])}<div class="message-copy">${renderMarkdown(message.content)}</div></div>`;
+      container.appendChild(article);
+    }
   });
+  document.getElementById('threadTitle').textContent = record.title;
+  document.getElementById('phaseLabel').textContent = PHASES[STATE.phase] || STATE.phase;
+  renderProfile();
+  const activities = STATE.activities;
+  STATE.activities = [];
+  document.getElementById('activityList').innerHTML = '';
+  addActivities(activities);
+  renderHistoryList();
+  closeMobilePanels();
+  container.scrollTop = container.scrollHeight;
 }
 
-function escapeHtml(text) {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+function deleteChat(event, id) {
+  event.stopPropagation();
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(getHistory().filter(item => item.id !== id)));
+  if (id === STATE.sessionId) resetChat();
+  else renderHistoryList();
 }
 
-function escapeAttr(text) {
-  if (!text) return '';
-  return text.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function exportCurrentChat() {
+  if (!STATE.messages.length) return;
+  const body = STATE.messages.map(item => `${item.role === 'user' ? '我' : '启航 Agent'}\n${item.content}`).join('\n\n');
+  const blob = new Blob([body], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `志愿咨询-${new Date().toISOString().slice(0, 10)}.txt`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function formatRelativeTime(timestamp) {
+  const diff = Date.now() - timestamp;
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+  return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+}
+
+function toggleLeftRail() {
+  document.getElementById('leftRail').classList.toggle('open');
+  document.getElementById('scrim').classList.toggle('show');
+}
+
+function toggleContextPanel() {
+  document.getElementById('contextPanel').classList.toggle('open');
+  document.getElementById('scrim').classList.toggle('show');
+}
+
+function closeMobilePanels() {
+  document.getElementById('leftRail').classList.remove('open');
+  document.getElementById('contextPanel').classList.remove('open');
+  document.getElementById('scrim').classList.remove('show');
 }

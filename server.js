@@ -153,6 +153,10 @@ function resolveProvider(providerId, apiKey) {
   return getDefaultProvider();
 }
 
+function hasProviderCredentials(provider, apiKey) {
+  return !!(provider && (apiKey || (provider.envKey && process.env[provider.envKey])));
+}
+
 // ========== OpenAI-Compatible API ==========
 
 async function callOpenAICompatible(provider, apiKey, systemPrompt, messages, maxTokens = 4096) {
@@ -241,7 +245,7 @@ async function callClaudeWithProvider(provider, apiKey, systemPrompt, messages, 
 async function callAI(providerId, apiKey, systemPrompt, messages, maxTokens = 4096) {
   const provider = resolveProvider(providerId, apiKey);
 
-  if (!provider) {
+  if (!hasProviderCredentials(provider, apiKey)) {
     console.log('  ⚠️ 未检测到可用的 AI Provider');
     return null;
   }
@@ -257,11 +261,29 @@ async function callAI(providerId, apiKey, systemPrompt, messages, maxTokens = 40
 
 // ========== Function Calling (V4) ==========
 
-async function callAIWithTools(providerId, apiKey, systemPrompt, messages, maxTokens = 4096) {
-  const provider = resolveProvider(providerId, apiKey);
-  if (!provider) return { text: null, toolCalls: [] };
+const TOOL_LABELS = {
+  update_student_profile: '更新学生画像',
+  generate_recommendation: '生成志愿方案',
+  search_admission: '查询录取数据库',
+  search_knowledge: '检索专业知识库',
+  web_search: '搜索最新公开信息',
+};
 
-  const MAX_ROUNDS = 3;
+function summarizeToolResult(name, result) {
+  if (result?.error) return result.error;
+  if (name === 'update_student_profile') {
+    return result.changed?.length ? `已更新 ${result.changed.length} 项信息` : '画像无变化';
+  }
+  if (name === 'generate_recommendation') return result.summary || '方案已生成';
+  if (name === 'search_admission') return `找到 ${result.total || 0} 条匹配记录`;
+  return `找到 ${result.results?.length || 0} 条结果`;
+}
+
+async function callAIWithTools(providerId, apiKey, systemPrompt, messages, maxTokens = 4096, context = {}) {
+  const provider = resolveProvider(providerId, apiKey);
+  if (!hasProviderCredentials(provider, apiKey)) return { text: null, toolCalls: [] };
+
+  const MAX_ROUNDS = 6;
   let round = 0;
   const allToolCalls = [];
 
@@ -296,12 +318,29 @@ async function callAIWithTools(providerId, apiKey, systemPrompt, messages, maxTo
         name: tc.name,
         input: tc.args,
       }));
-      messages.push({ role: 'assistant', content: toolUseBlocks });
+      messages.push({
+        role: 'assistant',
+        content: [...(text ? [{ type: 'text', text }] : []), ...toolUseBlocks],
+      });
       // Execute and add tool results
       const toolResults = [];
       for (const tc of toolCalls) {
-        const result = await executeTool(tc.name, tc.args);
-        allToolCalls.push({ name: tc.name, args: tc.args, result });
+        const startedAt = Date.now();
+        let result;
+        try {
+          result = await executeTool(tc.name, tc.args, context);
+        } catch (error) {
+          result = { error: error.message };
+        }
+        allToolCalls.push({
+          id: tc.id,
+          name: tc.name,
+          label: TOOL_LABELS[tc.name] || tc.name,
+          args: tc.args,
+          status: result?.error ? 'error' : 'success',
+          summary: summarizeToolResult(tc.name, result),
+          durationMs: Date.now() - startedAt,
+        });
         toolResults.push({
           type: 'tool_result',
           tool_use_id: tc.id,
@@ -313,7 +352,7 @@ async function callAIWithTools(providerId, apiKey, systemPrompt, messages, maxTo
       // OpenAI format
       messages.push({
         role: 'assistant',
-        content: null,
+        content: text || null,
         tool_calls: toolCalls.map(tc => ({
           id: tc.id,
           type: 'function',
@@ -321,8 +360,22 @@ async function callAIWithTools(providerId, apiKey, systemPrompt, messages, maxTo
         })),
       });
       for (const tc of toolCalls) {
-        const result = await executeTool(tc.name, tc.args);
-        allToolCalls.push({ name: tc.name, args: tc.args, result });
+        const startedAt = Date.now();
+        let result;
+        try {
+          result = await executeTool(tc.name, tc.args, context);
+        } catch (error) {
+          result = { error: error.message };
+        }
+        allToolCalls.push({
+          id: tc.id,
+          name: tc.name,
+          label: TOOL_LABELS[tc.name] || tc.name,
+          args: tc.args,
+          status: result?.error ? 'error' : 'success',
+          summary: summarizeToolResult(tc.name, result),
+          durationMs: Date.now() - startedAt,
+        });
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,
@@ -342,6 +395,9 @@ async function callOpenAIWithTools(provider, apiKey, systemPrompt, messages, too
   const model = process.env[provider.envModel] || provider.defaultModel;
   const realKey = apiKey || (provider.envKey ? process.env[provider.envKey] : '');
 
+  if (!baseURL) throw new Error(`Provider ${provider.name}: 未配置 baseURL`);
+  if (!realKey) throw new Error(`Provider ${provider.name}: 未提供 API Key`);
+
   const payload = {
     model,
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
@@ -359,7 +415,9 @@ async function callOpenAIWithTools(provider, apiKey, systemPrompt, messages, too
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `${provider.name} API ${response.status}`);
+    const error = new Error(err.error?.message || `${provider.name} API ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
 
   const data = await response.json();
@@ -489,6 +547,21 @@ function parseSuggestions(text) {
   return suggestions;
 }
 
+function buildAgentRuntimePrompt(profile) {
+  return `## Agent 运行规则
+
+你不是被动问答机器人，而是能自主使用工具完成任务的志愿规划 Agent。
+
+- 当前服务端画像：${JSON.stringify(profile)}
+- 用户说出任何新的画像信息时，先调用 update_student_profile，再继续回答。
+- 涉及专业适配、就业风险或省份政策时，主动调用 search_knowledge。
+- 涉及学校、分数线、位次和冲稳保时，主动调用 search_admission；信息齐全且用户要方案时调用 generate_recommendation。
+- 涉及 2026 年政策、最新动态或本地库没有的数据时，调用 web_search，并在正文保留可点击来源链接。
+- 工具无结果时明确说明数据边界，不编造学校、分数、位次、政策和就业数字。
+- 每轮可以连续调用多个工具，拿到结果后再综合作答。
+- 不要输出 HTML 注释、PROFILE JSON、工具参数或内部思考过程。正文直接给用户结论、依据和下一步。`;
+}
+
 // ========== V3 引擎触发 ==========
 
 function runEngineForProfile(profile) {
@@ -606,7 +679,17 @@ async function handleV2Chat(req, res) {
         schools: schoolsByMajor,
         profileStatus: getCompleteness(session.studentProfile),
         phase: 'analyzing',
-        suggestions: parseSuggestions(aiMessage)
+        suggestions: parseSuggestions(aiMessage),
+        profile: session.studentProfile,
+        agentTrace: [{
+          id: `quick_${Date.now()}`,
+          name: 'generate_recommendation',
+          label: TOOL_LABELS.generate_recommendation,
+          args: {},
+          status: 'success',
+          summary: '已根据快速画像生成完整方案',
+          durationMs: 0,
+        }]
       }
     });
   } catch (error) {
@@ -625,8 +708,13 @@ async function handleV2Chat(req, res) {
 // V3 对话模式（逐条消息 → 渐进式画像）
 async function handleV3Chat(req, res) {
   try {
-    const { message, sessionId, apiKey, providerId } = req.body;
+    const { message, sessionId, apiKey, providerId, clientProfile } = req.body;
     const session = getSession(sessionId || 'default');
+
+    // Browser history can outlive an in-memory server session. Restore validated profile fields.
+    if (clientProfile && typeof clientProfile === 'object') {
+      session.studentProfile = mergeProfile(session.studentProfile, clientProfile);
+    }
 
     // 如果没有任何消息且没有画像 → 初始打招呼
     const isFirstMessage = session.messages.length === 0;
@@ -657,7 +745,7 @@ async function handleV3Chat(req, res) {
     }
 
     // 构建 prompt
-    const systemPrompt = buildSystemPrompt(phase, session.studentProfile);
+    const systemPrompt = `${buildSystemPrompt(phase, session.studentProfile)}\n\n${buildAgentRuntimePrompt(session.studentProfile)}`;
 
     let userContent = message || '';
     if (phase === 'gathering' || phase === 'greeting' || phase === 'half_analyzing') {
@@ -685,7 +773,15 @@ async function handleV3Chat(req, res) {
 
     // AI 调用（V4: 带 function calling，LLM 可自主查数据、搜网络）
     const maxTokens = phase === 'analyzing' ? 4096 : 2048;
-    const { text: result } = await callAIWithTools(providerId || null, apiKey, systemPrompt, chatMessages, maxTokens);
+    const profileWasReady = isProfileReady(session.studentProfile);
+    const { text: result, toolCalls: agentTrace } = await callAIWithTools(
+      providerId || null,
+      apiKey,
+      systemPrompt,
+      chatMessages,
+      maxTokens,
+      { session, runEngineForProfile }
+    );
 
     if (!result) {
       const fallback = buildFallbackResponse(session.studentProfile, session.engineResult?.engine || null);
@@ -697,7 +793,9 @@ async function handleV3Chat(req, res) {
           profileStatus: getCompleteness(session.studentProfile),
           phase: session.phase,
           suggestions: [],
-          engineReady: !!session.engineResult
+          engineReady: !!session.engineResult,
+          profile: session.studentProfile,
+          agentTrace: []
         }
       });
     }
@@ -707,7 +805,6 @@ async function handleV3Chat(req, res) {
     const suggestions = parseSuggestions(cleanText);
 
     // 更新画像
-    const oldReady = isProfileReady(session.studentProfile);
     if (updates && Object.keys(updates).length > 0) {
       const profileUpdates = {};
       for (const [key, value] of Object.entries(updates)) {
@@ -723,10 +820,20 @@ async function handleV3Chat(req, res) {
     let engineResult = session.engineResult;
     let aiMessage = cleanText;
 
-    if (!oldReady && newReady && !session.engineResult) {
+    if (!profileWasReady && newReady && !session.engineResult) {
       console.log('[V3] 画像齐全，运行引擎...');
+      const startedAt = Date.now();
       engineResult = runEngineForProfile(session.studentProfile);
       if (engineResult) {
+        agentTrace.push({
+          id: `auto_${Date.now()}`,
+          name: 'generate_recommendation',
+          label: TOOL_LABELS.generate_recommendation,
+          args: {},
+          status: 'success',
+          summary: '画像已完整，自动生成基础志愿方案',
+          durationMs: Date.now() - startedAt,
+        });
         session.engineResult = engineResult;
         session.phase = 'analyzing';
 
@@ -805,7 +912,9 @@ async function handleV3Chat(req, res) {
         engineReady: !!session.engineResult,
         engine: session.engineResult?.engine?.ranked || null,
         recommendations: session.engineResult?.recommender || null,
-        schools: schoolsByMajor
+        schools: schoolsByMajor,
+        profile: session.studentProfile,
+        agentTrace
       }
     });
   } catch (error) {

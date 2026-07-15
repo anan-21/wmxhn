@@ -262,18 +262,9 @@ ${profileSummary}
 function buildOutputRules() {
   return `## 输出格式规则（必须严格遵守）
 
-### 规则1：每轮回复末尾附加画像更新
+### 规则1：画像通过工具更新
 
-每次回复的最后，附加一个隐藏的画像更新块。格式如下：
-
-<!--PROFILE
-{"score":620,"province":"河南","subject":"science"}
--->
-
-只包含本轮对话中新获得或更新的信息。如果没有新信息，写空对象 {}。
-
-如果所有关键信息（分数、省份、科类、家庭条件）已齐全，在 JSON 中额外加一个字段：
-"__ready": true
+用户说出新的学生信息时调用 update_student_profile。不要在正文输出 JSON、HTML 注释或内部状态。
 
 ### 规则2：话题用固定符号
 
@@ -365,12 +356,7 @@ ${avoidList || '无'}
 
 function buildFallbackResponse(profile, engineResult) {
   if (!engineResult) {
-    let text = `同学你好，峰哥。\n\n`;
-    text += `高考志愿这事儿，选对方向比瞎努力重要一百倍。\n\n`;
-    text += `我这边需要连接 AI 才能给你做完整的分析。`;
-    text += `在左侧边栏输入 DeepSeek 或 Claude 的 API Key，我就能像个真人老师一样跟你聊。\n\n`;
-    text += `Key 只存浏览器，不上传服务器，放心用。`;
-    return text;
+    return `目前没有可用的模型连接。你仍然可以点击“填写画像”运行本地推荐引擎；配置 API Key 后，Agent 才能继续追问、调用工具并综合解释结果。`;
   }
 
   const reach = engineResult.ranked.reach || [];
@@ -378,34 +364,22 @@ function buildFallbackResponse(profile, engineResult) {
   const safety = engineResult.ranked.safety || [];
   const avoid = engineResult.ranked.avoid || [];
 
-  let text = `好的，你的情况我基本理清楚了。\n\n`;
-  text += `${profile.score || '?'}分，${profile.province || '?'}，${profile.subject === 'science' ? '理科' : '文科'}。\n`;
-  text += `家庭条件：${profile.family_income || '没说'}。\n\n`;
-  text += `系统结果出来了：\n\n`;
+  const incomeMap = { low: '压力较大', medium: '普通工薪', high: '支持长期深造' };
+  let text = `## 本地引擎初步方案\n\n`;
+  text += `${profile.province || '未知省份'}${profile.subject === 'science' ? '物理类/理科' : '历史类/文科'}，${profile.score || '?'} 分`;
+  if (profile.rank) text += `，位次 ${profile.rank}`;
+  text += `；家庭条件为${incomeMap[profile.family_income] || '未说明'}。\n\n`;
 
-  text += `🔥 冲刺：\n`;
-  reach.forEach((m, i) => {
-    text += `  ${i + 1}. ${m.name}（${m.score}分）—— ${m.quote}\n`;
-  });
-
-  text += `\n⚖️ 稳妥（主力区）：\n`;
-  match.forEach((m, i) => {
-    text += `  ${i + 1}. ${m.name}（${m.score}分）—— ${m.quote}\n`;
-  });
-
-  text += `\n🛡️ 保底：\n`;
-  safety.forEach((m, i) => {
-    text += `  ${i + 1}. ${m.name}（${m.score}分）—— ${m.quote}\n`;
-  });
-
-  text += `\n⚠️ 不建议：\n`;
-  avoid.forEach((m, i) => {
-    text += `  ${i + 1}. ${m.name}（${m.score}分）—— ${m.quote}\n`;
-  });
-
-  text += `\n---\n`;
-  text += `⚠️ 当前为离线模式（未配置 API Key）。`;
-  text += `在左侧边栏输入 DeepSeek 或 Claude 的 API Key，就能获得完整的峰哥风格讲解。`;
+  const addGroup = (title, items) => {
+    text += `### ${title}\n`;
+    items.slice(0, 3).forEach(m => { text += `- **${m.name}**（匹配度 ${m.score}）：${m.quote}\n`; });
+    text += `\n`;
+  };
+  addGroup('冲刺方向', reach);
+  addGroup('稳妥方向', match);
+  addGroup('保底方向', safety);
+  addGroup('谨慎选择', avoid);
+  text += `这是规则引擎的初筛，不等于最终志愿表。配置模型后，Agent 会结合录取库、知识库和最新政策继续核验。`;
 
   return text;
 }

@@ -3,187 +3,144 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>高考志愿规划师 · AI 启发式顾问</title>
+  <meta name="theme-color" content="#f7f8fa">
+  <title>启航 · 高考志愿 Agent</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="app">
-    <!-- 侧边栏 -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <div class="logo">🧭 AI高考规划师</div>
-        <div class="logo-sub">启发式对话 · 主动发现需求</div>
+  <div class="workspace">
+    <aside class="left-rail" id="leftRail">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">Q</div>
+        <div>
+          <div class="brand-name">启航 Agent</div>
+          <div class="brand-meta">高考志愿决策</div>
+        </div>
       </div>
 
-      <button class="new-chat-btn" onclick="resetChat()">+ 新咨询</button>
+      <button class="primary-action" type="button" onclick="resetChat()">
+        <span aria-hidden="true">＋</span><span>新建咨询</span>
+      </button>
 
-      <!-- 历史记录 -->
-      <div class="history-section">
-        <div class="history-header">
-          <span class="history-title">📋 历史记录</span>
-          <button class="history-export-btn" onclick="exportCurrentChat()" title="导出当前对话">⬇ 导出</button>
+      <nav class="history-panel" aria-label="咨询记录">
+        <div class="section-heading">
+          <span>最近咨询</span>
+          <button class="icon-button" type="button" onclick="exportCurrentChat()" title="导出当前咨询" aria-label="导出当前咨询">↓</button>
         </div>
         <div class="history-list" id="historyList"></div>
-        <div class="history-notice">⚠️ 记录仅存于当前浏览器，换设备或清缓存会丢失</div>
-      </div>
+      </nav>
 
-      <!-- 画像进度 -->
-      <div class="profile-indicator" id="profileIndicator" style="display:none;">
-        <div class="profile-indicator-title">📋 学生画像</div>
-        <div class="profile-bar">
-          <div class="profile-bar-fill" id="profileBarFill" style="width:0%"></div>
+      <div class="connection-card">
+        <label for="providerSelect">模型服务</label>
+        <select id="providerSelect" onchange="onProviderChange(this.value)"></select>
+        <label for="apiKeyInput">API Key <span>可选</span></label>
+        <div class="secret-field">
+          <input id="apiKeyInput" type="password" autocomplete="off" placeholder="使用服务端配置" onchange="onApiKeyChange(this.value)">
+          <button class="icon-button" type="button" onclick="toggleKeyVisibility()" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key">◉</button>
         </div>
-        <div class="profile-fields" id="profileFields"></div>
-      </div>
-
-      <!-- 快速模式 -->
-      <div class="quick-mode-section">
-        <button class="quick-mode-toggle" onclick="toggleQuickMode()">
-          ⚡ 快速模式（填表）
-        </button>
-        <div class="student-form" id="studentForm" style="display:none;">
-          <div class="form-grid">
-            <div class="form-group">
-              <label>高考分数 *</label>
-              <input type="number" id="score" placeholder="如 620" min="0" max="750">
-            </div>
-            <div class="form-group">
-              <label>省份 *</label>
-              <select id="province">
-                <option value="">请选择</option>
-                <option>北京</option><option>上海</option><option>广东</option>
-                <option>浙江</option><option>江苏</option><option>山东</option>
-                <option>河南</option><option>河北</option><option>湖北</option>
-                <option>湖南</option><option>四川</option><option>重庆</option>
-                <option>福建</option><option>安徽</option><option>江西</option>
-                <option>陕西</option><option>山西</option><option>辽宁</option>
-                <option>吉林</option><option>黑龙江</option><option>天津</option>
-                <option>广西</option><option>云南</option><option>贵州</option>
-                <option>甘肃</option><option>内蒙古</option><option>新疆</option>
-                <option>海南</option><option>宁夏</option><option>青海</option>
-                <option>西藏</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>科类 *</label>
-              <select id="subject">
-                <option value="">请选择</option>
-                <option value="science">理科（物理组）</option>
-                <option value="arts">文科（历史组）</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>全省排名</label>
-              <input type="number" id="rank" placeholder="如 8500（可选）">
-            </div>
-            <div class="form-group">
-              <label>家庭经济条件 *</label>
-              <select id="family_income">
-                <option value="">请选择</option>
-                <option value="low">条件一般（需尽快工作养家）</option>
-                <option value="medium">中等（能支持本科，考研有压力）</option>
-                <option value="high">较好（能支持深造，有试错空间）</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>兴趣方向</label>
-              <input type="text" id="interest" placeholder="如 计算机、医学（没有就留空）">
-            </div>
-            <div class="form-group">
-              <label>城市偏好</label>
-              <select id="city_preference">
-                <option value="true">是，想去大城市</option>
-                <option value="false">无所谓，去哪都行</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>考研计划</label>
-              <select id="postgraduate">
-                <option value="false">不考或不确定</option>
-                <option value="true">确定要考研</option>
-              </select>
-            </div>
-          </div>
-          <button class="submit-btn" onclick="submitQuickMode()" id="quickSubmitBtn">
-            🚀 快速分析
-          </button>
-        </div>
-      </div>
-
-      <!-- API Key -->
-      <div class="api-key-section">
-        <div class="api-key-label">🔑 AI API Key</div>
-        <input
-          type="password"
-          id="apiKeyInput"
-          class="api-key-input"
-          placeholder="sk-..."
-          onchange="onApiKeyChange(this.value)"
-        >
-        <div class="api-key-hint">
-          支持各类 AI 大模型（Claude / DeepSeek / GPT / Kimi / GLM / 通义千问 / 豆包 等）
-        </div>
-        <div class="api-key-hint" style="margin-top:6px;font-size:10px;color:#6b7280;">
-          🔒 为保护您的隐私，API Key 仅保存在您的浏览器本地，不会上传、存储或共享给平台服务器。
-        </div>
-      </div>
-
-      <div class="sidebar-footer">
-        <div class="mode-badge" id="modeBadge">离线模式</div>
-        <div class="sidebar-tip">AI 启发式对话<br>主动帮你发现需求</div>
+        <div class="connection-status" id="connectionStatus"><i></i><span>正在检测</span></div>
       </div>
     </aside>
 
-    <!-- 主聊天区 -->
-    <main class="chat-main">
-      <header class="chat-header">
-        <button class="menu-toggle" onclick="event.stopPropagation();toggleSidebar()">☰</button>
-        <div>
-          <h1>AI 高考规划师</h1>
-          <div class="chat-header-sub">像真人老师一样聊天，逐步帮你理清志愿方向</div>
+    <main class="agent-main">
+      <header class="topbar">
+        <button class="icon-button mobile-only" type="button" onclick="toggleLeftRail()" title="打开导航" aria-label="打开导航">☰</button>
+        <div class="thread-title">
+          <strong id="threadTitle">新咨询</strong>
+          <span id="phaseLabel">需求梳理</span>
         </div>
-        <div class="chat-header-status" id="chatStatus">👋 开始对话</div>
+        <div class="topbar-actions">
+          <button class="secondary-action" type="button" onclick="openProfileDialog()">填写画像</button>
+          <button class="icon-button mobile-only" type="button" onclick="toggleContextPanel()" title="查看学生画像" aria-label="查看学生画像">◎</button>
+          <div class="agent-status" id="chatStatus"><i></i><span>就绪</span></div>
+        </div>
       </header>
 
-      <div class="chat-messages" id="chatMessages">
-        <!-- 欢迎消息 -->
-        <div class="message assistant" id="welcomeMsg">
-          <div class="message-avatar avatar-static"></div>
-          <div class="message-body">
-            <div class="message-text">
-              <strong>同学你好，我是峰哥。</strong><br><br>
-              做了十年高考志愿规划，见过太多人选错路后悔。<br><br>
-              我这儿不像别的平台让你填一堆表。咱们就像聊天一样——你告诉我孩子的情况，我帮你分析。有什么说什么，想哪儿聊哪儿。<br><br>
-              👆 先在左边输入 API Key，然后直接跟我聊就行。
-            </div>
+      <section class="conversation" id="chatMessages" aria-live="polite">
+        <div class="empty-state" id="welcomeMsg">
+          <div class="empty-kicker">GAOKAO DECISION AGENT</div>
+          <h1>先说说你的情况</h1>
+          <p>分数、位次、省份、选科，知道多少说多少。Agent 会自己补齐问题、查数据并整理方案。</p>
+          <div class="starter-grid" id="quickStarters">
+            <button type="button" onclick="selectStarter('我是广东物理类考生，600分，位次大约4万，帮我看看学校和专业')">
+              <span>已有分数和位次</span><small>直接开始匹配学校</small>
+            </button>
+            <button type="button" onclick="selectStarter('我还不知道适合什么专业，你先通过提问帮我梳理方向')">
+              <span>还没想好专业</span><small>先做方向判断</small>
+            </button>
+            <button type="button" onclick="selectStarter('家庭条件一般，我更看重就业稳定和投入产出比')">
+              <span>优先考虑就业</span><small>从风险和回报出发</small>
+            </button>
+            <button type="button" onclick="selectStarter('帮我查一下2026年最新的高考志愿政策变化')">
+              <span>查询最新政策</span><small>使用联网搜索</small>
+            </button>
           </div>
         </div>
+      </section>
+
+      <footer class="composer-wrap">
+        <div class="composer">
+          <textarea id="chatInput" rows="1" maxlength="4000" placeholder="输入你的问题或学生情况…" oninput="resizeComposer(this)" onkeydown="handleComposerKey(event)"></textarea>
+          <div class="composer-footer">
+            <span id="composerHint">Agent 会按需调用录取库、知识库和联网搜索</span>
+            <button class="send-button" id="sendBtn" type="button" onclick="sendMessage()" title="发送" aria-label="发送">↑</button>
+          </div>
+        </div>
+      </footer>
+    </main>
+
+    <aside class="context-panel" id="contextPanel">
+      <div class="context-header">
+        <div>
+          <strong>学生画像</strong>
+          <span id="profilePercent">0% 完整</span>
+        </div>
+        <button class="icon-button mobile-only" type="button" onclick="toggleContextPanel()" title="关闭" aria-label="关闭">×</button>
+      </div>
+      <div class="progress-track"><div id="profileBarFill"></div></div>
+      <div class="profile-list" id="profileFields"></div>
+
+      <div class="context-divider"></div>
+      <div class="section-heading"><span>Agent 运行记录</span><span class="activity-count" id="activityCount">0</span></div>
+      <div class="activity-list" id="activityList">
+        <div class="activity-empty">工具调用会显示在这里</div>
       </div>
 
-      <!-- 输入区 -->
-      <div class="chat-input-area">
-        <!-- 快捷入口 -->
-        <div class="quick-starters" id="quickStarters">
-          <button class="starter-chip" onclick="selectStarter('我是广东物理类考生，600分，帮我推荐专业和学校')">🎯 广东物理600分</button>
-          <button class="starter-chip" onclick="selectStarter('我不知道学什么好，你先问我几个问题帮我理方向')">🤔 不知道学什么</button>
-          <button class="starter-chip" onclick="selectStarter('想学计算机，帮我看看合不合适')">💻 想学计算机</button>
-          <button class="starter-chip" onclick="selectStarter('家庭条件一般，想找个稳定好就业的方向')">🏠 家庭条件一般求稳</button>
-        </div>
-        <div class="chat-input-row" id="chatInputRow">
-          <input
-            type="text"
-            id="chatInput"
-            class="chat-input"
-            placeholder="说说孩子的分数和省份，咱们开始聊..."
-            onkeydown="if(event.key==='Enter')sendMessage()"
-          >
-          <button class="send-btn" onclick="sendMessage()" id="sendBtn">发送</button>
-        </div>
-        <div class="input-hint">按 Enter 发送 · AI 会像真人老师一样跟你聊，不是机器人问卷</div>
+      <div class="data-boundary">
+        <strong>数据边界</strong>
+        <p>录取结果仅作决策参考，正式填报前请以省考试院与院校招生章程为准。</p>
       </div>
-    </main>
+    </aside>
   </div>
 
+  <dialog id="profileDialog" class="profile-dialog">
+    <form method="dialog" onsubmit="submitQuickMode(event)">
+      <div class="dialog-header">
+        <div><strong>学生画像</strong><span>已知信息可以一次填完</span></div>
+        <button class="icon-button" value="cancel" formnovalidate aria-label="关闭">×</button>
+      </div>
+      <div class="form-grid">
+        <label>高考分数<input type="number" id="score" min="200" max="750" placeholder="例如 620" required></label>
+        <label>全省位次<input type="number" id="rank" min="1" placeholder="例如 8500"></label>
+        <label>省份<select id="province" required><option value="">请选择</option></select></label>
+        <label>科类<select id="subject" required><option value="">请选择</option><option value="science">物理类 / 理科</option><option value="arts">历史类 / 文科</option></select></label>
+        <label>家庭经济承压能力<select id="family_income"><option value="">请选择</option><option value="low">压力较大</option><option value="medium">普通工薪</option><option value="high">支持长期深造</option></select></label>
+        <label>兴趣方向<input type="text" id="interest" placeholder="例如 计算机、医学"></label>
+        <label>城市偏好<select id="city_preference"><option value="true">偏好大城市</option><option value="false">城市不限</option></select></label>
+        <label>深造计划<select id="postgraduate"><option value="false">暂不确定</option><option value="true">计划考研</option></select></label>
+      </div>
+      <div class="dialog-actions">
+        <button class="secondary-action" value="cancel" formnovalidate>取消</button>
+        <button class="primary-action" type="submit">保存并分析</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="scrim" id="scrim" onclick="closeMobilePanels()"></div>
   <script src="/app.js"></script>
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  </script>
+  <script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
