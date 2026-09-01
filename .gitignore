@@ -27,3 +27,4 @@ npm-debug.log*
 data/admission-v3.json
 data/admission_clean.db.gz
 reference/
+.env*

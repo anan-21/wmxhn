@@ -29,6 +29,7 @@ const STATE = {
 document.addEventListener('DOMContentLoaded', async () => {
   populateProvinces();
   loadApiKey();
+  renderStatusAvatars();
   renderProfile();
   renderHistoryList();
   await loadProviders();
@@ -61,6 +62,7 @@ async function loadProviders() {
     STATE.providerId = preferred?.id || fallback?.id || '';
     STATE.providerConfigured = !!providers.find(item => item.id === STATE.providerId)?.configured;
     select.value = STATE.providerId;
+    renderStatusAvatars();
     updateConnectionStatus(providers.find(item => item.id === STATE.providerId)?.configured);
   } catch (error) {
     select.add(new Option('模型列表不可用', ''));
@@ -82,6 +84,7 @@ function onApiKeyChange(value) {
   STATE.authError = false;
   if (key) localStorage.setItem('gaokao_api_key', key);
   else localStorage.removeItem('gaokao_api_key');
+  renderStatusAvatars();
   updateConnectionStatus(!!key);
 }
 
@@ -89,6 +92,7 @@ function onProviderChange(value) {
   STATE.providerId = value;
   STATE.providerConfigured = !!STATE.providers.find(item => item.id === value)?.configured;
   STATE.authError = false;
+  renderStatusAvatars();
   localStorage.setItem('gaokao_provider', value);
   updateConnectionStatus(!!getApiKey());
 }
@@ -103,6 +107,20 @@ function getAgentAvatarHtml() {
   if (STATE.authError) src = '/avatar-error.jpg';
   else if (getApiKey() || STATE.providerConfigured) src = '/avatar-ai.jpg';
   return `<img src="${src}" alt="启航 Agent">`;
+}
+
+function getAgentAvatarSrc() {
+  if (STATE.authError) return '/avatar-error.jpg';
+  if (getApiKey() || STATE.providerConfigured) return '/avatar-ai.jpg';
+  return '/avatar-offline.jpg';
+}
+
+function renderStatusAvatars() {
+  const src = getAgentAvatarSrc();
+  ['brandAvatar', 'welcomeAvatar'].forEach(id => {
+    const image = document.querySelector(`#${id} img`);
+    if (image) image.src = src;
+  });
 }
 
 function updateConnectionStatus(available, label) {
@@ -157,10 +175,12 @@ async function sendMessage() {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.detail || payload.error || '请求失败');
     STATE.authError = false;
+    renderStatusAvatars();
     pending.remove();
     processResponse(payload.data);
   } catch (error) {
     STATE.authError = /API Key|401|403|鉴权|认证/.test(error.message);
+    renderStatusAvatars();
     pending.remove();
     addAssistantMessage(`这轮没有完成：${error.message}\n\n请检查模型配置后重试。`, { agentTrace: [] });
     setAgentStatus('error', '执行失败');
@@ -200,7 +220,7 @@ function addUserMessage(text) {
   STATE.messages.push({ role: 'user', content: text });
   const article = document.createElement('article');
   article.className = 'message-row user-row';
-  article.innerHTML = `<div class="message-label">你</div><div class="message-bubble">${escapeHtml(text)}</div>`;
+  article.innerHTML = `<div class="user-message"><div><div class="message-label">你</div><div class="message-bubble">${escapeHtml(text)}</div></div><div class="user-avatar"><img src="/avatar-user.jpg" alt="用户头像"></div></div>`;
   appendToConversation(article);
   updateThreadTitle(text);
 }
@@ -431,7 +451,7 @@ async function resetChat() {
 }
 
 function createWelcomeHtml() {
-  return `<div class="empty-state" id="welcomeMsg"><div class="empty-kicker">GAOKAO DECISION AGENT</div><h1>先说说你的情况</h1><p>分数、位次、省份、选科，知道多少说多少。Agent 会自己补齐问题、查数据并整理方案。</p><div class="starter-grid" id="quickStarters"><button type="button" onclick="selectStarter('我是广东物理类考生，600分，位次大约4万，帮我看看学校和专业')"><span>已有分数和位次</span><small>直接开始匹配学校</small></button><button type="button" onclick="selectStarter('我还不知道适合什么专业，你先通过提问帮我梳理方向')"><span>还没想好专业</span><small>先做方向判断</small></button><button type="button" onclick="selectStarter('家庭条件一般，我更看重就业稳定和投入产出比')"><span>优先考虑就业</span><small>从风险和回报出发</small></button><button type="button" onclick="selectStarter('帮我查一下2026年最新的高考志愿政策变化')"><span>查询最新政策</span><small>使用联网搜索</small></button></div></div>`;
+  return `<div class="empty-state" id="welcomeMsg"><div class="welcome-avatar" id="welcomeAvatar"><img src="${getAgentAvatarSrc()}" alt="启航 Agent"></div><div class="empty-kicker">GAOKAO DECISION AGENT</div><h1>先说说你的情况</h1><p>分数、位次、省份、选科，知道多少说多少。Agent 会自己补齐问题、查数据并整理方案。</p><div class="starter-grid" id="quickStarters"><button type="button" onclick="selectStarter('我是广东物理类考生，600分，位次大约4万，帮我看看学校和专业')"><span>已有分数和位次</span><small>直接开始匹配学校</small></button><button type="button" onclick="selectStarter('我还不知道适合什么专业，你先通过提问帮我梳理方向')"><span>还没想好专业</span><small>先做方向判断</small></button><button type="button" onclick="selectStarter('家庭条件一般，我更看重就业稳定和投入产出比')"><span>优先考虑就业</span><small>从风险和回报出发</small></button><button type="button" onclick="selectStarter('帮我查一下2026年最新的高考志愿政策变化')"><span>查询最新政策</span><small>使用联网搜索</small></button></div></div>`;
 }
 
 function getHistory() {
@@ -482,7 +502,7 @@ function loadChat(id) {
     if (message.role === 'user') {
       const article = document.createElement('article');
       article.className = 'message-row user-row';
-      article.innerHTML = `<div class="message-label">你</div><div class="message-bubble">${escapeHtml(message.content)}</div>`;
+      article.innerHTML = `<div class="user-message"><div><div class="message-label">你</div><div class="message-bubble">${escapeHtml(message.content)}</div></div><div class="user-avatar"><img src="/avatar-user.jpg" alt="用户头像"></div></div>`;
       container.appendChild(article);
     } else {
       const article = document.createElement('article');
