@@ -69,7 +69,7 @@
 - **Symptom**: Vercel remote build could not find scripts/build-documents.js although the local build passed.
 - **Reproduction**: Deploy with the legacy .vercelignore rule that excluded the complete scripts directory.
 - **Root cause**: Local builds read working-tree files, while the Vercel upload omits ignored files before remote building. The new build entrypoint lived in an excluded directory.
-- **Fix**: Exclude individual scripts while explicitly including build-documents.js, and track .vercelignore as release configuration.
+- **Fix**: Exclude individual scripts while explicitly including build-documents.js in the tracked release configuration.
 - **Regression test**: Remote Vercel production build and generated Worker endpoint checks.
 - **Prevention rule**: When adding a build entrypoint, verify deployment upload filters as well as local build and function output.
 - **Affected scope**: Vercel deployment packaging.
