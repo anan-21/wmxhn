@@ -1,12 +1,18 @@
 {
   "name": "gaokao-ai",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "高考志愿决策系统 - 张雪峰风格AI顾问 · 基于规则引擎 + Claude AI",
   "main": "server.js",
   "scripts": {
+    "build:documents": "node scripts/build-documents.js",
+    "build": "npm run build:documents",
+    "vercel-build": "npm run build:documents",
+    "prestart": "npm run build:documents",
+    "predev": "npm run build:documents",
     "start": "node server.js",
     "dev": "node server.js",
     "test": "node --test tests/*.test.js",
+    "test:browser": "playwright test",
     "test-engine": "node engine/engine.js"
   },
   "keywords": [
@@ -30,6 +36,12 @@
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
     "flexsearch": "^0.8.212",
+    "mammoth": "1.13.0",
+    "unpdf": "1.9.1",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "esbuild": "0.28.2"
   }
 }

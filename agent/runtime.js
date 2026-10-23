@@ -5,6 +5,8 @@ const ajv = new Ajv({ strict: false, allErrors: true });
 const validators = new Map(TOOLS.map(({ function: fn }) => [fn.name, ajv.compile(fn.parameters)]));
 
 const TOOL_LABELS = {
+  search_uploaded_documents: '检索上传文档',
+  read_uploaded_document: '阅读上传文档',
   update_student_profile: '更新学生画像',
   generate_recommendation: '生成志愿方案',
   search_admission: '查询录取数据库',

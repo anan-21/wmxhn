@@ -28,3 +28,9 @@ data/admission-v3.json
 data/admission_clean.db.gz
 reference/
 .env*
+
+# Reproducible browser bundle and test outputs
+public/document-parser.js
+public/document-parser.js.LEGAL.txt
+playwright-report/
+test-results/

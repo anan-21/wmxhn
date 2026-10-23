@@ -80,13 +80,24 @@
       </section>
 
       <footer class="composer-wrap">
-        <div class="composer">
+        <details class="session-documents" id="sessionDocuments" hidden>
+          <summary>本次资料 <span id="sessionDocumentCount">0</span><small>可继续追问</small></summary>
+          <div id="sessionDocumentList"></div>
+          <p>移除后不再用于后续提问，聊天中的文件卡片会保留。</p>
+        </details>
+        <div class="composer" id="documentDropZone">
+          <div class="file-drop-hint" aria-hidden="true"><strong>松开以添加文档</strong><span>PDF、DOCX、TXT、MD、CSV</span></div>
+          <div class="attachment-list" id="attachmentList" aria-live="polite"></div>
+          <div class="attachment-notice" id="attachmentNotice" role="status"></div>
           <textarea id="chatInput" rows="1" maxlength="4000" placeholder="输入你的问题或学生情况…" oninput="resizeComposer(this)" onkeydown="handleComposerKey(event)"></textarea>
           <div class="composer-footer">
-            <span id="composerHint">Agent 会按需调用录取库、知识库和联网搜索</span>
+            <button class="attach-button" id="attachBtn" type="button" onclick="document.getElementById('documentInput').click()" title="添加文档，也可拖入文件" aria-label="添加文档">＋</button>
+            <input id="documentInput" type="file" accept=".pdf,.docx,.txt,.md,.csv" multiple hidden>
+            <span id="composerHint">拖入 PDF、DOCX、TXT、MD 或 CSV，基于文件提问</span>
             <button class="send-button" id="sendBtn" type="button" onclick="sendMessage()" title="发送" aria-label="发送">↑</button>
           </div>
         </div>
+        <details class="document-privacy"><summary>文档支持与数据流</summary><p>最多 4 个文件，每个 5 MB；PDF 最多 80 页，单篇最多 12 万字符，总计 24 万字符。仅支持文本 PDF，不含 OCR。文件先在浏览器提取文字；发送问题时，正文经 HTTPS 到本站后端，相关片段再发送给所选模型供应商。附件在本页内存保留，刷新后需重新添加；本站不持久化原文件或正文，咨询历史会保存回答和引用摘录。模型供应商的数据处理规则以其政策为准。不要上传不便提供给模型的内容。</p></details>
       </footer>
     </main>
 

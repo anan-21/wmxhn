@@ -22,7 +22,7 @@ function createSession() {
 test('tool schemas are available in both provider formats', () => {
   assert.deepEqual(
     TOOLS.map(tool => tool.function.name),
-    ['update_student_profile', 'generate_recommendation', 'search_admission', 'search_knowledge', 'web_search']
+    ['search_uploaded_documents', 'read_uploaded_document', 'update_student_profile', 'generate_recommendation', 'search_admission', 'search_knowledge', 'web_search']
   );
   assert.deepEqual(toClaudeTools().map(tool => tool.name), TOOLS.map(tool => tool.function.name));
 });

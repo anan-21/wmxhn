@@ -5,7 +5,9 @@
 ## 分工
 
 - `runtime.js`：模型适配、工具参数校验、循环上限、超时、工具执行轨迹。
-- `../engine/tools.js`：五个领域工具及其 JSON Schema，继续使用原有录取库、RAG 和推荐引擎。
+- `../engine/tools.js`：五个领域工具与两个附件工具及其 JSON Schema，继续使用原有录取库、RAG 和推荐引擎。
+- `../engine/uploadedDocuments.js`：附件字段与大小校验、请求内分块、中文/英文关键词检索和带位置的来源。所有文件索引只属于当前请求。
+- `../browser/document-parser.js`：浏览器 Worker 内解析原文件；esbuild 生成 `public/document-parser.js`。
 - `../server.js`：HTTP API、当前会话画像、业务提示词；通过 `callAIWithTools` 调用新运行层。
 
 ## 执行约束
@@ -30,7 +32,9 @@ npm start
 
 `tests/agent-runtime.test.js` 使用模拟供应商 HTTP 响应验证真实 SDK 路径，无需 Key、无模型费用。覆盖 OpenAI 兼容接口、Claude 原生接口、循环终止、参数校验、错误状态和会话工具上下文。
 
-当前记忆仍来自原有内存会话；本次接入没有增加跨实例持久化。快速填表路径继续使用原有规则引擎和单次解释流程。真实供应商的网络、配额和具体模型兼容性仍需有效 Key 验证。
+服务端仍使用临时内存会话，浏览器发送受限历史帮助恢复；没有增加跨设备持久化数据库。快速填表路径继续使用原有规则引擎和单次解释流程，附件可在随后聊天时提问。真实供应商的网络、配额和具体模型兼容性仍需有效 Key 验证。
+
+附件每轮由浏览器重发解析正文，不放入共享会话缓存。浏览器携带最近的受限 user/assistant 历史以适应 serverless 实例切换，服务端拒绝 system/tool 角色。附件正文作为单独的资料消息和工具结果进入模型，系统提示明确其不可信、不能覆盖指令，文档中的学生信息需要用户确认后才能更新画像。来源列表表示实际提供给模型的参考片段，不保证模型的每一句话都已被这些片段支持。
 
 参考：
 - https://ai-sdk.dev/docs/agents/building-agents

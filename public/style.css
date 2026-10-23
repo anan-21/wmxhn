@@ -373,3 +373,69 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Uploaded documents stay with the active consultation in browser memory. */
+.composer { position: relative; }
+.composer.dragging { border-color: var(--green); box-shadow: 0 0 0 3px rgba(23,107,77,.16); }
+.file-drop-hint { display: none; position: absolute; inset: 5px; z-index: 3; align-items: center; justify-content: center; flex-direction: column; gap: 5px; border: 1px dashed #70a18a; border-radius: 5px; background: rgba(240,248,243,.97); pointer-events: none; color: var(--green); }
+.file-drop-hint strong { font-size: 13px; font-weight: 600; }
+.file-drop-hint span { font-size: 10px; color: var(--muted); }
+.composer.dragging .file-drop-hint { display: flex; }
+.attach-button { flex: 0 0 auto; width: 30px; height: 30px; padding: 0; border: 1px solid var(--line-strong); border-radius: 6px; background: white; color: var(--green); cursor: pointer; font-size: 20px; line-height: 1; }
+.attach-button:hover { background: #f0f6f3; }
+.attach-button:disabled { color: var(--faint); cursor: wait; }
+.composer-footer #composerHint { flex: 1; }
+.attachment-list { max-height: 190px; overflow-y: auto; }
+.attachment-list:not(:empty) { padding: 9px 10px 0; }
+.attachment-item { display: flex; align-items: flex-start; gap: 9px; padding: 8px; border: 1px solid #e2eae6; border-radius: 6px; background: #f6f9f7; }
+.attachment-item + .attachment-item { margin-top: 6px; }
+.attachment-type { min-width: 34px; padding: 4px 2px; border-radius: 4px; background: #e7efe9; color: var(--green); text-align: center; font: 9px ui-monospace, monospace; }
+.attachment-info { flex: 1; min-width: 0; }
+.attachment-info strong, .attachment-info span, .attachment-info small { display: block; word-break: break-word; }
+.attachment-info strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); font-size: 11px; font-weight: 550; }
+.attachment-info span { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.attachment-info small { margin-top: 3px; color: #92703c; font-size: 10px; line-height: 1.45; }
+.attachment-item > button { flex: 0 0 auto; width: 22px; height: 22px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; font-size: 16px; }
+.attachment-item > button:hover { background: #e6ece8; }
+.attachment-item.error { background: #fff8f5; border-color: #f0d9d2; }
+.attachment-item.error .attachment-info span { color: #9a4a38; }
+.attachment-item.parsing .attachment-type { animation: pulse 1.4s ease-in-out infinite; }
+.attachment-progress { height: 3px; margin-top: 6px; overflow: hidden; border-radius: 2px; background: #e2ebe5; }
+.attachment-progress i { display: block; height: 100%; background: var(--green); transition: width .15s ease; }
+.attachment-progress.indeterminate i { animation: document-progress 1.3s ease-in-out infinite alternate; }
+.session-documents { margin-bottom: 8px; color: var(--muted); font-size: 11px; }
+.session-documents[hidden] { display: none; }
+.session-documents > summary { width: fit-content; padding: 5px 0; cursor: pointer; color: var(--green); }
+.session-documents > summary > span { margin-left: 4px; }
+.session-documents > summary > small { margin-left: 10px; color: var(--faint); font-size: 10px; }
+#sessionDocumentList { max-height: 145px; overflow-y: auto; padding: 4px 0; }
+.session-document { display: flex; align-items: center; gap: 9px; padding: 5px 0; }
+.session-document > span:nth-child(2) { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.session-document small { display: block; margin-top: 2px; color: var(--faint); font-size: 10px; }
+.session-documents > p { margin: 4px 0 8px; color: var(--faint); font-size: 10px; }
+.user-message-body { min-width: 0; max-width: min(100%, 540px); }
+.user-message-body > .message-bubble { max-width: 100%; }
+.message-attachments { display: grid; justify-items: end; gap: 6px; margin-bottom: 8px; }
+.message-attachment { display: flex; align-items: center; gap: 10px; width: 270px; max-width: 100%; padding: 11px 13px; border: 1px solid #d7e3db; border-radius: 8px; background: #f3f7f4; text-align: left; }
+.message-attachment > div { min-width: 0; }
+.message-attachment strong { display: block; max-width: 205px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); font-size: 12px; font-weight: 600; }
+.message-attachment small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+@keyframes document-progress { from { transform: translateX(0); } to { transform: translateX(185%); } }
+.attachment-notice { color: #9a4a38; font-size: 11px; line-height: 1.5; }
+.attachment-notice:not(:empty) { padding: 10px 14px 0; }
+.document-privacy { margin-top: 7px; color: var(--faint); font-size: 9px; line-height: 1.6; }
+.document-privacy summary { cursor: pointer; }
+.document-privacy p { margin: 6px 0 0; color: var(--muted); }
+.document-sources { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+.source-heading { margin-bottom: 7px; color: var(--muted); font-size: 10px; }
+.document-source { margin-top: 5px; border: 1px solid var(--line); border-radius: 5px; background: #f9fbfa; }
+.document-source summary { display: flex; gap: 10px; align-items: center; padding: 8px 10px; cursor: pointer; font-size: 11px; }
+.document-source summary > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.document-source summary > small { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+.document-source summary > b { color: var(--faint); font-size: 12px; font-weight: 400; }
+.document-source blockquote { margin: 0 10px 10px; padding: 8px 10px; border-left: 2px solid #aec7b8; white-space: pre-wrap; overflow-wrap: anywhere; color: #56665d; font-size: 11px; line-height: 1.7; }
+@media (max-width: 760px) {
+  .composer-footer { justify-content: space-between; }
+  .attachment-list { max-height: 155px; }
+  .document-privacy { font-size: 9px; }
+}

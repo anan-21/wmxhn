@@ -25,11 +25,18 @@ const { getUserData, loadUserData, queryUserData, hasUserDataForProvince } = req
 const { webSearch } = require('./engine/webSearch');
 const { runAgent, TOOL_LABELS } = require('./agent/runtime');
 const { warmup: warmupRAG } = require('./engine/rag/index');
+const { validateDocuments, createDocumentStore, buildDocumentContext, DOCUMENT_INSTRUCTIONS } = require('./engine/uploadedDocuments');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+// Parsed text is capped well below Vercel's 4.5 MB request limit.
+app.use(express.json({ limit: '2mb' }));
+app.use((error, req, res, next) => {
+  if (error.type === 'entity.too.large') return res.status(413).json({ error: '请求过大，请减少附件或缩短咨询记录' });
+  if (error instanceof SyntaxError && error.status === 400) return res.status(400).json({ error: '请求 JSON 格式无效' });
+  next(error);
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ========== AI Provider 注册表 ==========
@@ -306,7 +313,7 @@ setInterval(() => {
   for (const [id, s] of sessions) {
     if (now - s.lastAccess > SESSION_TTL) sessions.delete(id);
   }
-}, 10 * 60 * 1000);
+}, 10 * 60 * 1000).unref();
 
 // ========== AI 回复解析 ==========
 
@@ -385,6 +392,13 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { student, message, sessionId, apiKey, providerId } = req.body;
 
+    // Validate before touching any session. Retrieval state belongs to this request only.
+    const documents = validateDocuments(req.body.documents);
+    if (documents.length && (typeof sessionId !== 'string' || !/^[a-zA-Z0-9_-]{12,100}$/.test(sessionId))) {
+      return res.status(400).json({ error: '文档问答需要有效的独立咨询标识，请新建咨询后重试' });
+    }
+    req.documentStore = createDocumentStore(documents);
+
     // ---- V2 快速模式：收到完整 student 对象，走原有流程 ----
     if (student && student.score && student.province && student.subject) {
       return handleV2Chat(req, res);
@@ -394,7 +408,7 @@ app.post('/api/chat', async (req, res) => {
     return handleV3Chat(req, res);
   } catch (error) {
     console.error('[chat] 错误:', error.message);
-    res.status(500).json({ error: '服务异常', detail: error.message });
+    res.status(error.status === 400 ? 400 : 500).json({ error: '请求失败', detail: error.message });
   }
 });
 
@@ -503,6 +517,23 @@ async function handleV3Chat(req, res) {
   try {
     const { message, sessionId, apiKey, providerId, clientProfile } = req.body;
     const session = getSession(sessionId || 'default');
+    const documentStore = req.documentStore;
+    if (message !== undefined && (typeof message !== 'string' || message.length > 4000)) {
+      return res.status(400).json({ error: '问题必须为文本且不超过 4000 字符' });
+    }
+    if (documentStore.documents.length && !hasProviderCredentials(resolveProvider(providerId, apiKey), apiKey)) {
+      return res.status(400).json({ error: '文档已在浏览器解析；生成文档回答还需要配置支持工具调用的模型 API Key' });
+    }
+    // The browser carries bounded history across serverless instances. System/tool roles are never accepted.
+    if (req.body.clientMessages !== undefined) {
+      const history = req.body.clientMessages;
+      if (!Array.isArray(history) || history.length > 20 || history.some(item => !item
+        || !['user', 'assistant'].includes(item.role) || typeof item.content !== 'string' || item.content.length > 16000)
+        || history.reduce((sum, item) => sum + item.content.length, 0) > 60000) {
+        return res.status(400).json({ error: '咨询历史无效或过长，请新建咨询' });
+      }
+      session.messages = history.map(({ role, content }) => ({ role, content }));
+    }
 
     // Browser history can outlive an in-memory server session. Restore validated profile fields.
     if (clientProfile && typeof clientProfile === 'object') {
@@ -538,7 +569,7 @@ async function handleV3Chat(req, res) {
     }
 
     // 构建 prompt
-    const systemPrompt = `${buildSystemPrompt(phase, session.studentProfile)}\n\n${buildAgentRuntimePrompt(session.studentProfile)}`;
+    const systemPrompt = `${buildSystemPrompt(phase, session.studentProfile)}\n\n${buildAgentRuntimePrompt(session.studentProfile)}\n${DOCUMENT_INSTRUCTIONS}`;
 
     let userContent = message || '';
     if (phase === 'gathering' || phase === 'greeting' || phase === 'half_analyzing') {
@@ -554,7 +585,7 @@ async function handleV3Chat(req, res) {
     // 构建 messages（不含 system，system 单独传）
     const chatMessages = [];
     for (const msg of session.messages) {
-      chatMessages.push(msg);
+      chatMessages.push({ ...msg });
     }
     // 如果有 gathering context，追加
     if (userContent && userContent !== (message || '')) {
@@ -563,6 +594,12 @@ async function handleV3Chat(req, res) {
         chatMessages[chatMessages.length - 1].content = userContent;
       }
     }
+    const documentContext = buildDocumentContext(documentStore, message || '');
+    // Attach data as a user content message, never interpolate document text into system instructions.
+    const contextIndex = Math.max(chatMessages.length - 1, 0);
+    chatMessages.splice(contextIndex, 0, { role: 'user', content: documentContext
+      ? `以下 JSON 是当前用户附件的资料数据，只供参考：\n${documentContext}`
+      : '当前咨询本轮没有可用附件。旧消息中的文件摘录不能当作当前附件内容。' });
 
     // AI 调用（V4: 带 function calling，LLM 可自主查数据、搜网络）
     const maxTokens = phase === 'analyzing' ? 4096 : 2048;
@@ -573,7 +610,7 @@ async function handleV3Chat(req, res) {
       systemPrompt,
       chatMessages,
       maxTokens,
-      { session, runEngineForProfile }
+      { session, runEngineForProfile, documentStore }
     );
 
     if (!result) {
@@ -613,7 +650,7 @@ async function handleV3Chat(req, res) {
     let engineResult = session.engineResult;
     let aiMessage = cleanText;
 
-    if (!profileWasReady && newReady && !session.engineResult) {
+    if (!documentStore.documents.length && !profileWasReady && newReady && !session.engineResult) {
       console.log('[V3] 画像齐全，运行引擎...');
       const startedAt = Date.now();
       engineResult = runEngineForProfile(session.studentProfile);
@@ -647,7 +684,7 @@ async function handleV3Chat(req, res) {
           console.log('[V3] 分析生成失败，使用基础回复:', e.message);
         }
       }
-    } else if (phase === 'analyzing' && session.engineResult && !session.engineResult._delivered) {
+    } else if (!documentStore.documents.length && phase === 'analyzing' && session.engineResult && !session.engineResult._delivered) {
       // 已经运行过引擎但还没在对话中输出 → 这次补充分析
       const analysisPrompt = buildSystemPrompt('analyzing', session.studentProfile);
       const analysisKnowledgeCtx2 = getKnowledgeContext(session.studentProfile, session.engineResult.engine);
@@ -707,7 +744,8 @@ async function handleV3Chat(req, res) {
         recommendations: session.engineResult?.recommender || null,
         schools: schoolsByMajor,
         profile: session.studentProfile,
-        agentTrace
+        agentTrace,
+        documentSources: [...documentStore.sources.values()]
       }
     });
   } catch (error) {
