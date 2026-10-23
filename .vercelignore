@@ -2,6 +2,7 @@ node_modules
 .git
 .claude
 reference
-scripts
+scripts/*
+!scripts/build-documents.js
 *.db.gz
 admission-v3.json
