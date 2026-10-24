@@ -6,6 +6,26 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('#providerSelect')).toHaveValue('custom');
 });
 
+test('specific OpenAI key prefixes select the right provider and prevent mismatched sends', async ({ page }) => {
+  const requests = [];
+  await page.route('**/api/chat', route => {
+    requests.push(route.request().postDataJSON());
+    return route.fulfill({ status: 200, json: { data: { message: 'mock' } } });
+  });
+  await page.locator('#providerSelect').selectOption('deepseek');
+  await page.locator('#apiKeyInput').fill('sk-proj-browser-placeholder');
+  await page.locator('#chatInput').fill('测试');
+  await expect(page.locator('#providerSelect')).toHaveValue('openai');
+  await page.locator('#providerSelect').selectOption('deepseek');
+  await page.locator('#sendBtn').click();
+  await expect(page.locator('#attachmentNotice')).toContainText('对应 OpenAI');
+  expect(requests).toHaveLength(0);
+  await page.locator('#providerSelect').selectOption('custom');
+  await page.locator('#apiKeyInput').fill('sk-proj-custom-placeholder');
+  await page.locator('#chatInput').fill('使用已选择的自定义入口');
+  await expect(page.locator('#providerSelect')).toHaveValue('custom');
+});
+
 async function add(page, name, buffer, mimeType = 'text/plain') {
   await page.locator('#documentInput').setInputFiles({ name, mimeType, buffer });
   await expect(page.locator('.attachment-item.parsing')).toHaveCount(0);

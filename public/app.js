@@ -88,8 +88,26 @@ function onApiKeyChange(value) {
   STATE.authError = false;
   if (key) localStorage.setItem('gaokao_api_key', key);
   else localStorage.removeItem('gaokao_api_key');
+  const detected = detectKeyProvider(key);
+  if (detected && STATE.providerId !== 'custom' && STATE.providers.some(item => item.id === detected)) {
+    document.getElementById('providerSelect').value = detected;
+    onProviderChange(detected);
+  }
   renderStatusAvatars();
   updateConnectionStatus(!!key);
+}
+
+function detectKeyProvider(key) {
+  if (key.startsWith('sk-proj-')) return 'openai';
+  if (key.startsWith('sk-ant-')) return 'claude';
+  return null; // Generic sk- keys are ambiguous; preserve the user's explicit selection.
+}
+
+function isSelectedProviderCompatible() {
+  const detected = detectKeyProvider(getApiKey());
+  if (!detected || STATE.providerId === detected || STATE.providerId === 'custom') return true;
+  showDocumentNotice(`当前 Key 的格式对应 ${detected === 'openai' ? 'OpenAI' : 'Claude'}，请先选择匹配的模型服务商再发送。`);
+  return false;
 }
 
 function onProviderChange(value) {
@@ -157,6 +175,7 @@ async function sendMessage() {
   const draftText = input.value;
   const staged = STATE.attachments.filter(item => !item.sent && item.status === 'ready');
   if ((!draftText.trim() && !staged.length) || STATE.isProcessing || isParsingDocuments()) return;
+  if (!isSelectedProviderCompatible()) return;
   if (STATE.attachments.some(item => !item.sent && item.status === 'error')) {
     showDocumentNotice('请先移除解析失败的文件，再发送本条消息。');
     return;
@@ -440,6 +459,7 @@ function updateThreadTitle(message) {
 }
 
 function openProfileDialog() {
+  if (!isSelectedProviderCompatible()) return;
   Object.keys(PROFILE_META).forEach(key => {
     const input = document.getElementById(key);
     if (input && STATE.profile[key] !== undefined && STATE.profile[key] !== null) input.value = String(STATE.profile[key]);
@@ -450,6 +470,10 @@ function openProfileDialog() {
 async function submitQuickMode(event) {
   event.preventDefault();
   if (STATE.isProcessing || isParsingDocuments()) return;
+  if (!isSelectedProviderCompatible()) {
+    document.getElementById('profileDialog').close();
+    return;
+  }
   const student = {
     score: Number(document.getElementById('score').value) || null,
     rank: Number(document.getElementById('rank').value) || null,

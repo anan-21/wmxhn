@@ -1,6 +1,6 @@
 {
   "name": "gaokao-ai",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "高考志愿决策系统 - 张雪峰风格AI顾问 · 基于规则引擎 + Claude AI",
   "main": "server.js",
   "scripts": {

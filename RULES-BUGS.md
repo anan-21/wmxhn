@@ -73,3 +73,36 @@
 - **Regression test**: Remote Vercel production build and generated Worker endpoint checks.
 - **Prevention rule**: When adding a build entrypoint, verify deployment upload filters as well as local build and function output.
 - **Affected scope**: Vercel deployment packaging.
+
+### Bug #008: OpenAI quick analysis and follow-ups omitted the versioned API root
+
+- **Symptom**: Normal chat could work while quick profile analysis or follow-up failed with a generic server error.
+- **Reproduction**: Run tests/openai-routing.test.js against the 2.1.0 server: quick analysis calls api.openai.com/chat/completions while the Agent calls the required /v1/chat/completions.
+- **Root cause**: Legacy single-call code duplicated URL/model handling and did not apply the Agent adapter's version normalization or environment override precedence.
+- **Fix**: Reuse createModel and AI SDK generateText for compatible-provider single-call paths.
+- **Regression test**: tests/openai-routing.test.js covers ordinary chat, quick profile, automatic analysis, follow-up and environment URL overrides using mock responses.
+- **Prevention rule**: All paths to the same provider must share model and endpoint configuration; test each public entrypoint.
+- **Affected scope**: OpenAI/compatible-provider quick analysis and follow-up.
+- **Fixed in**: 2.1.1.
+
+### Bug #009: Generic sk- prefix shadowed OpenAI project keys
+
+- **Symptom**: A sk-proj- key could be routed to DeepSeek when providerId was omitted, or when the browser's default DeepSeek selection was left unchanged.
+- **Reproduction**: Submit a mock sk-proj- key without providerId; the 2.1.0 detector matches DeepSeek's generic sk- prefix first.
+- **Root cause**: Prefix matching used registry order rather than specificity, while the browser did not recognize specific key formats.
+- **Fix**: Prefer longest prefixes server-side; recognize specific key formats in the browser, preserve explicit custom endpoints, and block known mismatches before sending.
+- **Regression test**: tests/openai-routing.test.js and tests/browser/documents.spec.js verify automatic selection and no request on a mismatch.
+- **Prevention rule**: Specific credential-format hints must precede generic ones; do not infer ambiguous formats or override custom endpoints.
+- **Affected scope**: Provider selection and authentication routing.
+- **Fixed in**: 2.1.1.
+
+### Bug #010: Wrapped provider failures lost useful diagnostic categories
+
+- **Symptom**: Quota, network or model errors displayed only a server-internal error; old follow-up responses could echo raw provider text.
+- **Reproduction**: Return mock 429 quota/rate, 404 model and nested cause/lastError network failures through the HTTP routes.
+- **Root cause**: Route handlers only examined top-level HTTP status and one handler returned raw error.message.
+- **Fix**: Classify SDK wrapper/cause chains and provider error codes into safe controlled messages; never expose raw provider messages in response or provider-failure logs.
+- **Regression test**: tests/openai-routing.test.js checks categories and ensures a credential placeholder embedded in provider messages never reaches the HTTP JSON.
+- **Prevention rule**: Preserve diagnostic categories across SDK wrappers while redacting provider-controlled message text.
+- **Affected scope**: Chat, quick analysis and follow-up errors.
+- **Fixed in**: 2.1.1.

@@ -23,7 +23,8 @@ const {
 const { getKnowledgeContext } = require('./knowledge/loader');
 const { getUserData, loadUserData, queryUserData, hasUserDataForProvince } = require('./engine/userDataLoader');
 const { webSearch } = require('./engine/webSearch');
-const { runAgent, TOOL_LABELS } = require('./agent/runtime');
+const { runAgent, TOOL_LABELS, createModel } = require('./agent/runtime');
+const { getProviderErrorMessage } = require('./agent/providerErrors');
 const { warmup: warmupRAG } = require('./engine/rag/index');
 const { validateDocuments, createDocumentStore, buildDocumentContext, DOCUMENT_INSTRUCTIONS } = require('./engine/uploadedDocuments');
 
@@ -64,7 +65,7 @@ const PROVIDERS = [
   },
   {
     id: 'openai',
-    name: 'OpenAI (ChatGPT)',
+    name: 'OpenAI 官方 API',
     type: 'openai-compatible',
     baseURL: 'https://api.openai.com',
     defaultModel: 'gpt-4o',
@@ -139,12 +140,9 @@ function getProviderById(id) {
 function getProviderByKey(apiKey) {
   if (!apiKey) return null;
   if (apiKey.startsWith('sk-ant-')) return getProviderById('claude');
-  for (const p of PROVIDERS) {
-    if (p.keyPrefix && p.keyPrefix.length > 0 && apiKey.startsWith(p.keyPrefix) && p.id !== 'claude') {
-      return p;
-    }
-  }
-  return null;
+  // Specific prefixes must win over generic provider prefixes.
+  return [...PROVIDERS].filter(p => p.keyPrefix).sort((a, b) => b.keyPrefix.length - a.keyPrefix.length)
+    .find(p => apiKey.startsWith(p.keyPrefix)) || null;
 }
 
 function getDefaultProvider() {
@@ -167,47 +165,14 @@ function hasProviderCredentials(provider, apiKey) {
 // ========== OpenAI-Compatible API ==========
 
 async function callOpenAICompatible(provider, apiKey, systemPrompt, messages, maxTokens = 4096) {
-  const baseURL = (provider.baseURL || process.env[provider.envBaseURL] || '').replace(/\/+$/, '');
-  const model = process.env[provider.envModel] || provider.defaultModel;
-  const realKey = apiKey || (provider.envKey ? process.env[provider.envKey] : '');
-
-  if (!baseURL) {
-    throw new Error(`Provider ${provider.name}: 未配置 baseURL`);
-  }
-  if (!realKey) {
-    throw new Error(`Provider ${provider.name}: 未提供 API Key`);
-  }
-
-  const url = `${baseURL}/chat/completions`;
-
-  const payload = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      ...messages
-    ],
-    max_tokens: maxTokens,
-    temperature: 0.7
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${realKey}`
-    },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    const error = new Error(err.error?.message || `${provider.name} API ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
+  // Reuse the Agent adapter for identical endpoint, environment override and model rules.
+  const model = await createModel(provider, apiKey);
+  if (!model) throw new Error('未提供 API Key');
+  const { generateText } = await import('ai');
+  const result = await generateText({ model, system: systemPrompt, messages,
+    maxOutputTokens: maxTokens, temperature: 0.7, maxRetries: 0,
+    timeout: { totalMs: 45000 } });
+  return result.text;
 }
 
 // ========== Claude API (Anthropic SDK) ==========
@@ -500,13 +465,8 @@ async function handleV2Chat(req, res) {
       }
     });
   } catch (error) {
-    console.error('[V2 chat] 错误:', error.message);
-
-    let userMsg = '服务器内部错误';
-    if (error.status === 401) userMsg = 'API Key 无效，请检查 Key 是否正确';
-    else if (error.status === 403) userMsg = 'API 访问被拒绝。可能原因：Key 无效、账户欠费、或网络限制';
-    else if (error.status === 429) userMsg = 'API 调用太频繁，请稍后再试';
-    else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') userMsg = '无法连接到 API 服务器，请检查网络或代理设置';
+    const userMsg = getProviderErrorMessage(error);
+    console.error('[V2 chat] 错误:', userMsg);
 
     res.status(500).json({ error: 'AI 调用失败', detail: userMsg });
   }
@@ -681,7 +641,7 @@ async function handleV3Chat(req, res) {
           }
           session.engineResult._delivered = true;
         } catch (e) {
-          console.log('[V3] 分析生成失败，使用基础回复:', e.message);
+          console.log('[V3] 分析生成失败，使用基础回复:', getProviderErrorMessage(e));
         }
       }
     } else if (!documentStore.documents.length && phase === 'analyzing' && session.engineResult && !session.engineResult._delivered) {
@@ -698,7 +658,7 @@ async function handleV3Chat(req, res) {
           aiMessage = analysisText;
         }
       } catch (e) {
-        console.log('[V3] 分析生成失败:', e.message);
+        console.log('[V3] 分析生成失败:', getProviderErrorMessage(e));
       }
       session.engineResult._delivered = true;
       session.phase = 'followup';
@@ -749,13 +709,8 @@ async function handleV3Chat(req, res) {
       }
     });
   } catch (error) {
-    console.error('[V3 chat] 错误:', error.message);
-
-    let userMsg = '服务器内部错误';
-    if (error.status === 401) userMsg = 'API Key 无效';
-    else if (error.status === 403) userMsg = 'API 访问被拒绝';
-    else if (error.status === 429) userMsg = 'API 调用太频繁，请稍后再试';
-    else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') userMsg = '无法连接到 API 服务器';
+    const userMsg = getProviderErrorMessage(error);
+    console.error('[V3 chat] 错误:', userMsg);
 
     res.status(500).json({ error: 'AI 调用失败', detail: userMsg });
   }
@@ -817,8 +772,9 @@ app.post('/api/chat/followup', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('[followup] 错误:', error.message);
-    res.status(500).json({ error: error.message });
+    const detail = getProviderErrorMessage(error);
+    console.error('[followup] 错误:', detail);
+    res.status(500).json({ error: 'AI 调用失败', detail });
   }
 });
 
